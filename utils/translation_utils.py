@@ -9,14 +9,49 @@ from pathlib import Path
 from typing import Optional, Union, Set
 
 import pandas as pd
-from deep_translator import GoogleTranslator
-from langid.langid import LanguageIdentifier, model
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
+
+# Optional translation dependencies
+try:
+    from deep_translator import GoogleTranslator
+    DEEP_TRANSLATOR_AVAILABLE = True
+except ImportError:
+    DEEP_TRANSLATOR_AVAILABLE = False
+    GoogleTranslator = None
+
+try:
+    from langid.langid import LanguageIdentifier, model
+    LANGID_AVAILABLE = True
+except ImportError:
+    LANGID_AVAILABLE = False
+    LanguageIdentifier = None
+    model = None
+
+try:
+    from tenacity import (
+        retry,
+        retry_if_exception_type,
+        stop_after_attempt,
+        wait_exponential,
+    )
+    TENACITY_AVAILABLE = True
+except ImportError:
+    TENACITY_AVAILABLE = False
+
+    # No-op fallback decorators if tenacity is not installed
+    def retry(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
+    def retry_if_exception_type(exc):
+        return None
+
+    def stop_after_attempt(n):
+        return None
+
+    def wait_exponential(*args, **kwargs):
+        return None
+
 from tqdm import tqdm
 
 # ── Default export directory ───────────────────────────────────────────────────
@@ -51,8 +86,37 @@ _COMMON_ENGLISH_WORDS = frozenset([
     'channel', 'music', 'song', 'official', 'movie', 'film', 'trailer'
 ])
 
-# Build a langid identifier (configured per-function call)
-_identifier = LanguageIdentifier.from_modelstring(model, norm_probs=True)
+# Lazy-loaded langid identifier
+_identifier: Optional[LanguageIdentifier] = None
+
+
+def _get_identifier() -> LanguageIdentifier:
+    """Return a lazily initialized langid identifier."""
+    global _identifier
+    if _identifier is None:
+        if not LANGID_AVAILABLE:
+            raise ImportError(
+                "Language detection requires the optional 'langid' package. "
+                "Install with: pip install data-science-utils[translate]"
+            )
+        _identifier = LanguageIdentifier.from_modelstring(model, norm_probs=True)
+    return _identifier
+
+
+def _require_translate_deps() -> None:
+    """Raise a clear ImportError if translation dependencies are missing."""
+    missing = []
+    if not DEEP_TRANSLATOR_AVAILABLE:
+        missing.append("deep-translator")
+    if not LANGID_AVAILABLE:
+        missing.append("langid")
+    if not TENACITY_AVAILABLE:
+        missing.append("tenacity")
+    if missing:
+        raise ImportError(
+            f"Translation utilities require optional dependencies: {', '.join(missing)}. "
+            "Install with: pip install data-science-utils[translate]"
+        )
 
 
 def _get_script_pattern(languages: Optional[Set[str]] = None) -> re.Pattern:
@@ -340,7 +404,8 @@ def detect_language_rows(
         target_langs = set(target_langs)
     
     # Configure the identifier with target languages + English
-    identifier = LanguageIdentifier.from_modelstring(model, norm_probs=True)
+    _require_translate_deps()
+    identifier = _get_identifier()
     if target_langs:
         identifier.set_languages(list(target_langs) + ['en'])
     
@@ -485,6 +550,7 @@ def translate_series(
     pd.Series
         Series with translated text
     """
+    _require_translate_deps()
     result = series.copy()
 
     # Work only with non-null values
@@ -569,6 +635,7 @@ def translate_dataframe(
     ...     dest="es",    # to Spanish
     ... )
     """
+    _require_translate_deps()
     out = df if inplace else df.copy()
 
     for col in columns:
@@ -661,6 +728,7 @@ def run_translation_pipeline(
     >>> # Load final translated data later
     >>> final_df = pd.read_csv("data/multilingual_translated_translated.csv")
     """
+    _require_translate_deps()
     print("── Step 1: Language Detection ──")
     target_lang_df, other_df = detect_language_rows(
         df, 
@@ -789,6 +857,7 @@ def translate_all_text(
     >>> # Load later
     >>> final_df = pd.read_csv("data/all_translated_translated.csv")
     """
+    _require_translate_deps()
     result = df.copy()
     
     for col in columns:

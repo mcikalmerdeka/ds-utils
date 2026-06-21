@@ -54,6 +54,59 @@ from .classification_evals_and_tuning import (
     get_hyperparameters as get_hyperparameters_classification
 )
 
+# A/B Testing functions
+from .ab_testing import (
+    calculate_sample_size,
+    check_normality,
+    check_variance_homogeneity,
+    perform_t_test,
+    perform_mann_whitney_u_test,
+    perform_chi_squared_test,
+    perform_z_test_proportions,
+    analyze_ab_test_results
+)
+
+# Text preprocessing and analysis functions
+from .text_preprocessing import (
+    TextPreprocessor,
+    TextVisualizer,
+    quick_clean,
+    extract_ngrams,
+    get_text_stats
+)
+
+# Translation utilities
+from .translation_utils import (
+    detect_language_rows,
+    translate_series,
+    translate_dataframe,
+    run_translation_pipeline,
+    translate_all_text
+)
+
+# Automated EDA report generator
+from .eda_report import generate_eda_report
+
+# Time series analysis functions
+from .time_series import (
+    decompose_series,
+    adf_test,
+    kpss_test,
+    check_stationarity,
+    make_stationary,
+    create_lag_features,
+    create_rolling_features,
+    create_date_features,
+    split_time_series,
+    time_series_cv_splits,
+    evaluate_forecast,
+    plot_acf_pacf,
+    detect_outliers_iqr,
+    interpolate_series,
+    resample_series,
+    get_acf_pacf_values,
+)
+
 # Define what's exported with `from utils import *`
 __all__ = [
     # Preprocessing
@@ -100,4 +153,49 @@ __all__ = [
     'tune_all_models_classification',
     'get_model_pipeline_classification',
     'get_hyperparameters_classification',
+
+    # A/B Testing
+    'calculate_sample_size',
+    'check_normality',
+    'check_variance_homogeneity',
+    'perform_t_test',
+    'perform_mann_whitney_u_test',
+    'perform_chi_squared_test',
+    'perform_z_test_proportions',
+    'analyze_ab_test_results',
+
+    # Text preprocessing and analysis
+    'TextPreprocessor',
+    'TextVisualizer',
+    'quick_clean',
+    'extract_ngrams',
+    'get_text_stats',
+
+    # Translation utilities
+    'detect_language_rows',
+    'translate_series',
+    'translate_dataframe',
+    'run_translation_pipeline',
+    'translate_all_text',
+
+    # Automated EDA report
+    'generate_eda_report',
+
+    # Time series analysis
+    'decompose_series',
+    'adf_test',
+    'kpss_test',
+    'check_stationarity',
+    'make_stationary',
+    'create_lag_features',
+    'create_rolling_features',
+    'create_date_features',
+    'split_time_series',
+    'time_series_cv_splits',
+    'evaluate_forecast',
+    'plot_acf_pacf',
+    'detect_outliers_iqr',
+    'interpolate_series',
+    'resample_series',
+    'get_acf_pacf_values',
 ]
