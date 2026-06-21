@@ -1,0 +1,30 @@
+# Core dependencies for data-science-utils
+# Install with: pip install -r requirements.txt
+# Or use uv: uv pip install -r requirements.txt
+
+category-encoders
+ipykernel
+matplotlib
+numpy
+pandas
+scikit-learn
+scipy
+seaborn
+statsmodels
+tqdm
+xgboost
+
+# Optional: text preprocessing and NLP utilities
+# Uncomment the next lines to enable full TextPreprocessor / TextVisualizer functionality
+# beautifulsoup4
+# contractions
+# nltk
+# Pillow
+# textblob
+# wordcloud
+
+# Optional: language detection and translation utilities
+# Uncomment the next lines to enable translation_utils functionality
+# deep-translator
+# langid
+# tenacity
