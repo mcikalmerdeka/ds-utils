@@ -1,6 +1,6 @@
 # Utils Refactor Roadmap (Post-P0)
 
-**Status:** P0 correctness is complete. Branch `feat/refactor-utils` at `ae719f6`; `uv run pytest -q` → 48 passed.
+**Status:** P0 and P1 correctness are complete. Branch `feat/refactor-utils` (P1 code at `e36b07e`); `uv run pytest -q` → 91 passed, 2 expected warnings.
 
 ## How to use this roadmap
 
@@ -12,7 +12,7 @@ Use one plan per session. Stop after the plan's final verification unless the hu
 
 ## Recommended sequence
 
-1. **P1 correctness** — `2026-10-30-p1-correctness.md`
+1. **P1 correctness** — `2026-10-30-p1-correctness.md` — ✅ complete
 2. **ML architecture** — `2026-10-30-ml-architecture.md`
 3. **Packaging** — `2026-10-30-packaging.md`
 4. **Testing and tooling** — `2026-10-30-testing-tooling.md`
@@ -50,14 +50,15 @@ Testing/tooling can be moved earlier if CI is wanted before the architecture cha
 
 - Python 3.14.3
 - pandas 2.3.3, scikit-learn 1.7.2, seaborn 0.13.2
-- 48 tests passing; two expected warnings (unknown-binary warning and seaborn `vert` deprecation)
+- 91 tests passing; two expected warnings (unknown-binary warning and seaborn `vert` deprecation)
 - P0 plan: `docs/superpowers/plans/2026-10-29-p0-correctness.md`
+- P1 plan: `docs/superpowers/plans/2026-10-30-p1-correctness.md`
 
 ## Deferred from the P0 review
 
 Keep these in mind; the relevant plan owns them:
 
-- P1: numeric/all-NaT date summaries, empty-frame outlier/scaling behavior, nominal one-hot unknown policy documentation, partial-encoder validation, strip/swarm empty-list test, exact-score evaluation tests.
+- P1: addressed by `2026-10-30-p1-correctness.md` (numeric/all-NaT date summaries, empty-frame outlier/scaling behavior, encoder completeness, optional-dependency boundaries, plus feature-selection/A-B/time-series fixes).
 - Architecture: duplicated classification/regression logic, repeated CV fitting, formatted-string metrics, plot side effects, logging.
 - Packaging: generic `utils` import name, eager 4.2-second import, dependency floors, package metadata, requirements duplication.
 - Testing/tooling: coverage for untested modules, CI, linting, optional-extra test strategy.
