@@ -13,6 +13,16 @@ from typing import List, Dict, Union, Optional, Any, Tuple
 # ║                       Functions for Data Pre-Processing                          ║
 # ╚══════════════════════════════════════════════════════════════════════════════════╝
 
+
+def _apply_log1p(series: pd.Series, column: str) -> pd.Series:
+    """Apply log1p only when all observed values are non-negative."""
+    if (series.dropna() < 0).any():
+        raise ValueError(
+            f"Cannot apply log1p to column '{column}': values must be non-negative"
+        )
+    return np.log1p(series)
+
+
 ## Checking basic data information
 def check_data_information(data: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
     """
@@ -39,7 +49,26 @@ def check_data_information(data: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
     list_item = []
     total_rows = len(data)
     duplicated_rows = data.duplicated().sum() # Calculate once as it's global
-    
+    summary_columns = [
+        'Feature',
+        'Data Type',
+        'Null Values',
+        'Null Percentage',
+        'Zero Values',
+        'Zero Percentage',
+        'Negative Values',
+        'Negative Percentage',
+        'Empty Strings',
+        'Numeric in Object',
+        'Duplicated Values',
+        'Unique Values',
+        'Cardinality Ratio',
+        'Unique Sample'
+    ]
+
+    if total_rows == 0:
+        return pd.DataFrame(columns=summary_columns)
+
     for col in cols:
         series = data[col]
         
@@ -102,25 +131,7 @@ def check_data_information(data: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
             unique_sample        # Sample of unique values
         ])
 
-    desc_df = pd.DataFrame(
-        data=list_item,
-        columns=[
-            'Feature',
-            'Data Type',
-            'Null Values',
-            'Null Percentage',
-            'Zero Values',
-            'Zero Percentage',
-            'Negative Values',
-            'Negative Percentage',
-            'Empty Strings',
-            'Numeric in Object',
-            'Duplicated Values',
-            'Unique Values',
-            'Cardinality Ratio',
-            'Unique Sample'
-        ]
-    )
+    desc_df = pd.DataFrame(data=list_item, columns=summary_columns)
     return desc_df
 
 ## Drop columns function
@@ -243,11 +254,29 @@ def handle_missing_values(data: pd.DataFrame, columns: List[str], strategy: str 
     missing_cols = [col for col in columns if col not in df_imputed.columns]
     if missing_cols:
         raise ValueError(f"Columns not found in dataframe: {missing_cols}")
-    
+
+    valid_strategies = {'median', 'mean', 'mode', 'ffill', 'bfill', 'knn', 'remove'}
+    if strategy not in valid_strategies:
+        raise ValueError(
+            f"Unknown strategy: {strategy}. Use 'median', 'mean', 'mode', "
+            "'ffill', 'bfill', 'knn', or 'remove'"
+        )
+
+    if strategy in {'median', 'mean', 'knn'}:
+        non_numeric = [
+            col for col in columns
+            if not pd.api.types.is_numeric_dtype(df_imputed[col])
+        ]
+        if non_numeric:
+            raise ValueError(
+                f"strategy='{strategy}' requires numeric columns; use 'mode' "
+                f"for categorical columns: {non_numeric}"
+            )
+
     # Remove rows with missing values
     if strategy == 'remove':
         return df_imputed.dropna(subset=columns), None
-    
+
     # Simple imputation methods
     elif strategy in ['median', 'mean', 'mode']:
         if strategy == 'median':
@@ -263,7 +292,7 @@ def handle_missing_values(data: pd.DataFrame, columns: List[str], strategy: str 
     
     # Forward/backward fill
     elif strategy in ['ffill', 'bfill']:
-        df_imputed[columns] = df_imputed[columns].fillna(method=strategy)
+        df_imputed[columns] = getattr(df_imputed[columns], strategy)()
         return df_imputed, None
     
     # KNN imputation (advanced)
@@ -348,34 +377,42 @@ def filter_outliers(data: pd.DataFrame, columns: List[str], method: str = 'iqr',
     
     # Loop through each column
     for col in columns:
+        series = data[col]
+        missing_mask = series.isna()
+
         # IQR method
         if method.lower() == 'iqr':
-            Q1 = data[col].quantile(0.25)
-            Q3 = data[col].quantile(0.75)
+            Q1 = series.quantile(0.25)
+            Q3 = series.quantile(0.75)
             IQR = Q3 - Q1
             lower_bound = Q1 - (IQR * threshold)
             upper_bound = Q3 + (IQR * threshold)
-            filter_outlier = ((data[col] >= lower_bound) & (data[col] <= upper_bound))
-            
+            filter_outlier = missing_mask | (
+                (series >= lower_bound) & (series <= upper_bound)
+            )
+
         # Z-score method
         elif method.lower() == 'zscore':
-            z_scores = np.abs(stats.zscore(data[col]))
-            filter_outlier = (z_scores < threshold)
-            
-            mean = data[col].mean()
-            std = data[col].std()
+            z_scores = pd.Series(np.nan, index=series.index, dtype=float)
+            valid_mask = ~missing_mask
+            if valid_mask.any():
+                z_scores.loc[valid_mask] = np.abs(stats.zscore(series[valid_mask]))
+            filter_outlier = missing_mask | (z_scores < threshold)
+
+            mean = series.mean()
+            std = series.std()
             lower_bound = mean - (threshold * std)
             upper_bound = mean + (threshold * std)
-        
+
         # Store detection statistics
         if detect_only:
-            outlier_count = len(data[~filter_outlier])
-            non_outlier_count = len(data[filter_outlier])
+            outlier_count = int((~filter_outlier).sum())
+            non_outlier_count = int(filter_outlier.sum())
             outlier_pct = round((outlier_count / len(data)) * 100, 2)
-            
+
             outlier_counts.append(outlier_count)
             non_outlier_counts.append(non_outlier_count)
-            is_outlier_list.append(data[col][~filter_outlier].any())
+            is_outlier_list.append(bool(((~filter_outlier) & ~missing_mask).any()))
             low_bounds.append(lower_bound)
             high_bounds.append(upper_bound)
             outlier_percentages.append(outlier_pct)
@@ -561,7 +598,7 @@ def feature_scaling(data: pd.DataFrame, scaling_config: Optional[Dict[str, Any]]
             # Apply log transformation if requested
             if log_transform:
                 for col in cols:
-                    df_scaled[col] = np.log1p(df_scaled[col])
+                    df_scaled[col] = _apply_log1p(df_scaled[col], col)
             
             # Get or create scaler
             if is_training:
@@ -612,7 +649,7 @@ def feature_scaling(data: pd.DataFrame, scaling_config: Optional[Dict[str, Any]]
         # Apply log transformation if requested
         if apply_log:
             for col in columns:
-                df_scaled[col] = np.log1p(df_scaled[col])
+                df_scaled[col] = _apply_log1p(df_scaled[col], col)
         
         # Initialize scaler if not provided (training mode)
         if scaler is None:
