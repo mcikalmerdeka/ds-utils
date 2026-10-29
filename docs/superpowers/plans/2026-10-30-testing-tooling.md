@@ -8,9 +8,9 @@
 
 **Tech Stack:** Python 3.14, pytest, pytest-cov, ruff, uv, GitHub Actions.
 
-**Spec:** `docs/superpowers/plans/2026-10-30-refactor-roadmap.md`, and the packaged `ds_utils` layout.
+**Spec:** `docs/superpowers/plans/2026-10-30-refactor-roadmap.md`, and the packaged `utils` layout.
 
-> This plan assumes the packaging plan has run and the import package is `ds_utils`. If testing/tooling is run earlier, substitute `utils` for `ds_utils` and update the final packaging plan accordingly.
+> This plan assumes the packaging hygiene plan has run; the import package remains `utils`.
 
 ## Global Constraints
 
@@ -62,7 +62,7 @@ pythonpath = ["."]
 addopts = "-ra"
 
 [tool.coverage.run]
-source = ["ds_utils"]
+source = ["utils"]
 branch = true
 omit = ["*/__init__.py"]
 
@@ -83,7 +83,7 @@ ignore = ["E501"]
 - [ ] **Step 3: Measure the baseline before enforcing coverage**
 
 ```bash
-uv run pytest --cov=ds_utils --cov-report=term-missing -q
+uv run pytest --cov=utils --cov-report=term-missing -q
 ```
 
 Record the baseline in `.superpowers/sdd/2026-10-30-testing-tooling/progress.md`. Do not set `fail_under` yet; Task 4 sets it to 70 after the coverage tests are added. Never lower the threshold to hide missing coverage.
@@ -95,7 +95,7 @@ Record the baseline in `.superpowers/sdd/2026-10-30-testing-tooling/progress.md`
 - `pytest_cov` is importable.
 - `shutil.which("ruff")` is not `None`.
 - `pyproject.toml` contains `[tool.coverage.run]` and `[tool.ruff]`.
-- `ds_utils` import works.
+- `utils` import works.
 
 - [ ] **Step 5: Run**
 
@@ -229,7 +229,7 @@ git commit -m "test: cover time series, feature selection, and EDA gaps"
 
 ```bash
 uv run pytest tests/test_eval_classification.py tests/test_eval_regression.py tests/test_tuning.py -q
-uv run pytest --cov=ds_utils --cov-report=term-missing -q
+uv run pytest --cov=utils --cov-report=term-missing -q
 ```
 
 Expected: PASS. Add `fail_under = 70` to `[tool.coverage.report]` only if the measured coverage is at least 70%; otherwise add focused tests until it reaches 70%. Do not lower the threshold to hide gaps.
@@ -260,7 +260,7 @@ Use `astral-sh/setup-uv@v6` (or the current stable action) with Python 3.14, the
 ```yaml
 - run: uv sync --group dev
 - run: uv run ruff check .
-- run: uv run pytest --cov=ds_utils --cov-report=term-missing
+- run: uv run pytest --cov=utils --cov-report=term-missing
 - run: uv build
 ```
 
@@ -283,7 +283,7 @@ Pin the revision to the installed ruff release; verify with `uv run ruff --versi
 Add to README:
 
 ```bash
-uv run pytest --cov=ds_utils --cov-report=term-missing
+uv run pytest --cov=utils --cov-report=term-missing
 uv run ruff check .
 uv build
 ```
@@ -292,7 +292,7 @@ uv build
 
 ```bash
 uv run ruff check .
-uv run pytest --cov=ds_utils --cov-report=term-missing -q
+uv run pytest --cov=utils --cov-report=term-missing -q
 uv build
 ```
 
@@ -323,7 +323,7 @@ In a subprocess:
 1. Build the wheel with `uv build --wheel`.
 2. Create a temporary virtual environment with `venv`.
 3. Install the wheel with `pip`.
-4. Run `python -c "import ds_utils; print(ds_utils.__version__)"`.
+4. Run `python -c "import utils; print(utils.__version__)"`.
 5. Assert the import does not require optional extras.
 
 Skip the test if the platform cannot create a venv; keep it enabled in CI.
