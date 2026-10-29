@@ -8,6 +8,46 @@ from typing import List, Optional
 # ║                       Functions for Statistical Summary                          ║
 # ╚══════════════════════════════════════════════════════════════════════════════════╝
 
+
+def _numeric_moments(series: pd.Series) -> tuple[float, float]:
+    """Return skewness and kurtosis for any pandas numeric dtype."""
+    values = pd.to_numeric(series, errors="coerce").dropna()
+    if len(values) < 2:
+        return np.nan, np.nan
+    return skew(values), kurtosis(values)
+
+
+def _sort_classes(values: pd.Series) -> list:
+    """Return non-null unique hue values in a stable order."""
+    classes = [value for value in pd.unique(values) if pd.notna(value)]
+    try:
+        return sorted(classes)
+    except TypeError:
+        return sorted(classes, key=str)
+
+
+def _categorical_stats(series: pd.Series) -> dict:
+    """Summarize one categorical series without assuming a non-empty value_counts."""
+    value_counts = series.dropna().value_counts()
+    total = len(series)
+    if value_counts.empty or total == 0:
+        return {
+            "bottom": None,
+            "freq_bottom": 0,
+            "top_percentage": np.nan,
+            "bottom_percentage": np.nan,
+            "n_categories": 0,
+        }
+
+    return {
+        "bottom": value_counts.idxmin(),
+        "freq_bottom": value_counts.min(),
+        "top_percentage": round(value_counts.max() / total * 100, 2),
+        "bottom_percentage": round(value_counts.min() / total * 100, 2),
+        "n_categories": series.nunique(),
+    }
+
+
 ## Describe numerical columns
 def describe_numerical_combined(data: pd.DataFrame, col_series: List[str], hue: Optional[str] = None) -> pd.DataFrame:
     """
@@ -39,20 +79,21 @@ def describe_numerical_combined(data: pd.DataFrame, col_series: List[str], hue: 
     overall_summary['IQR'] = overall_summary['75%'] - overall_summary['25%']
     overall_summary['CV'] = (overall_summary['std'] / overall_summary['mean']) * 100
     
-    # Calculate skewness and kurtosis for numerical columns
-    numerical_data = data[col_series].select_dtypes(include=['int64', 'float64']).dropna()
-    overall_summary['skewness'] = [skew(numerical_data[col]) for col in numerical_data.columns]
-    overall_summary['kurtosis'] = [kurtosis(numerical_data[col]) for col in numerical_data.columns]
+    # Calculate skewness and kurtosis per requested column so every numeric
+    # dtype (float32, nullable integers, etc.) is handled consistently.
+    moments = [_numeric_moments(data[col]) for col in col_series]
+    overall_summary['skewness'] = [value[0] for value in moments]
+    overall_summary['kurtosis'] = [value[1] for value in moments]
     
     # Rename columns to indicate these are overall statistics
     overall_summary.columns = ['Feature'] + [f'overall_{col}' if col != 'Feature' else col 
                                            for col in overall_summary.columns[1:]]
     
     final_summary = overall_summary
-    
+
     # If hue column is provided, add class-specific statistics
     if hue is not None:
-        target_classes = sorted(data[hue].unique())
+        target_classes = _sort_classes(data[hue])
         class_summaries = []
         
         for target_class in target_classes:
@@ -68,10 +109,10 @@ def describe_numerical_combined(data: pd.DataFrame, col_series: List[str], hue: 
             class_summary['IQR'] = class_summary['75%'] - class_summary['25%']
             class_summary['CV'] = (class_summary['std'] / class_summary['mean']) * 100
             
-            # Calculate skewness and kurtosis
-            numerical_class_data = class_data[col_series].select_dtypes(include=['int64', 'float64']).dropna()
-            class_summary['skewness'] = [skew(numerical_class_data[col]) for col in numerical_class_data.columns]
-            class_summary['kurtosis'] = [kurtosis(numerical_class_data[col]) for col in numerical_class_data.columns]
+            # Calculate skewness and kurtosis per requested column
+            class_moments = [_numeric_moments(class_data[col]) for col in col_series]
+            class_summary['skewness'] = [value[0] for value in class_moments]
+            class_summary['kurtosis'] = [value[1] for value in class_moments]
             
             # Rename columns to indicate which class they belong to
             class_summary.columns = ['Feature'] + [f'class_{target_class}_{col}' if col != 'Feature' else col 
@@ -80,27 +121,26 @@ def describe_numerical_combined(data: pd.DataFrame, col_series: List[str], hue: 
             class_summaries.append(class_summary)
         
         # Combine all class summaries
-        all_class_summaries = class_summaries[0]
-        for summary in class_summaries[1:]:
-            all_class_summaries = pd.merge(all_class_summaries, summary, on='Feature')
-            
-        # Merge with overall summary
-        final_summary = pd.merge(final_summary, all_class_summaries, on='Feature')
-        
-        # Reorder columns to group statistics by type rather than by class
-        # Get all column names except 'Feature'
-        cols = final_summary.columns.tolist()
-        cols.remove('Feature')
-        
-        # Group similar statistics together
-        stats = ['count', 'mean', 'std', 'min', '25%', '50%', '75%', 'max', 'range', 'IQR', 'CV', 'skewness', 'kurtosis']
-        new_cols = ['Feature']
-        
-        for stat in stats:
-            stat_cols = [col for col in cols if stat in col]
-            new_cols.extend(stat_cols)
-            
-        final_summary = final_summary[new_cols]
+        if class_summaries:
+            all_class_summaries = class_summaries[0]
+            for summary in class_summaries[1:]:
+                all_class_summaries = pd.merge(all_class_summaries, summary, on='Feature')
+
+            # Merge with overall summary
+            final_summary = pd.merge(final_summary, all_class_summaries, on='Feature')
+
+            # Reorder columns to group statistics by type rather than by class
+            cols = final_summary.columns.tolist()
+            cols.remove('Feature')
+
+            stats = ['count', 'mean', 'std', 'min', '25%', '50%', '75%', 'max', 'range', 'IQR', 'CV', 'skewness', 'kurtosis']
+            new_cols = ['Feature']
+
+            for stat in stats:
+                stat_cols = [col for col in cols if stat in col]
+                new_cols.extend(stat_cols)
+
+            final_summary = final_summary[new_cols]
     
     return final_summary
 
@@ -128,75 +168,70 @@ def describe_categorical_combined(data: pd.DataFrame, col_series: List[str], hue
     """
     # Overall statistics
     cats_summary = data[col_series].describe().transpose().reset_index().rename(columns={'index': 'Feature'})
-    
-    # Add additional statistics for overall data
-    cats_summary['bottom'] = [data[col].value_counts().idxmin() for col in col_series]
-    cats_summary['freq_bottom'] = [data[col].value_counts().min() for col in col_series]
-    cats_summary['top_percentage'] = [round(data[col].value_counts().max() / len(data) * 100, 2) 
-                                    for col in col_series]
-    cats_summary['bottom_percentage'] = [round(data[col].value_counts().min() / len(data) * 100, 2) 
-                                       for col in col_series]
-    
-    # Add number of unique categories
-    cats_summary['n_categories'] = [data[col].nunique() for col in col_series]
-    
+
+    overall_stats = [_categorical_stats(data[col]) for col in col_series]
+    cats_summary['bottom'] = [value['bottom'] for value in overall_stats]
+    cats_summary['freq_bottom'] = [value['freq_bottom'] for value in overall_stats]
+    cats_summary['top_percentage'] = [value['top_percentage'] for value in overall_stats]
+    cats_summary['bottom_percentage'] = [value['bottom_percentage'] for value in overall_stats]
+    cats_summary['n_categories'] = [value['n_categories'] for value in overall_stats]
+
     # Rename columns to indicate these are overall statistics
-    cats_summary.columns = ['Feature'] + [f'overall_{col}' if col != 'Feature' else col 
+    cats_summary.columns = ['Feature'] + [f'overall_{col}' if col != 'Feature' else col
                                         for col in cats_summary.columns[1:]]
-    
+
     final_summary = cats_summary
-    
+
     # If hue column is provided, add class-specific statistics
     if hue is not None:
-        target_classes = sorted(data[hue].unique())
+        target_classes = _sort_classes(data[hue])
         class_summaries = []
-        
+
         for target_class in target_classes:
             # Filter data for current class
             class_data = data[data[hue] == target_class]
-            
+
             # Calculate basic statistics
             class_summary = class_data[col_series].describe().transpose().reset_index()
             class_summary = class_summary.rename(columns={'index': 'Feature'})
-            
+
             # Add additional statistics
-            class_summary['bottom'] = [class_data[col].value_counts().idxmin() for col in col_series]
-            class_summary['freq_bottom'] = [class_data[col].value_counts().min() for col in col_series]
-            class_summary['top_percentage'] = [round(class_data[col].value_counts().max() / len(class_data) * 100, 2) 
-                                             for col in col_series]
-            class_summary['bottom_percentage'] = [round(class_data[col].value_counts().min() / len(class_data) * 100, 2) 
-                                                for col in col_series]
-            class_summary['n_categories'] = [class_data[col].nunique() for col in col_series]
-            
+            class_stats = [_categorical_stats(class_data[col]) for col in col_series]
+            class_summary['bottom'] = [value['bottom'] for value in class_stats]
+            class_summary['freq_bottom'] = [value['freq_bottom'] for value in class_stats]
+            class_summary['top_percentage'] = [value['top_percentage'] for value in class_stats]
+            class_summary['bottom_percentage'] = [value['bottom_percentage'] for value in class_stats]
+            class_summary['n_categories'] = [value['n_categories'] for value in class_stats]
+
             # Rename columns to indicate which class they belong to
-            class_summary.columns = ['Feature'] + [f'class_{target_class}_{col}' if col != 'Feature' else col 
+            class_summary.columns = ['Feature'] + [f'class_{target_class}_{col}' if col != 'Feature' else col
                                                  for col in class_summary.columns[1:]]
-            
+
             class_summaries.append(class_summary)
-        
+
         # Combine all class summaries
-        all_class_summaries = class_summaries[0]
-        for summary in class_summaries[1:]:
-            all_class_summaries = pd.merge(all_class_summaries, summary, on='Feature')
-            
-        # Merge with overall summary
-        final_summary = pd.merge(final_summary, all_class_summaries, on='Feature')
-        
-        # Reorder columns to group statistics by type rather than by class
-        cols = final_summary.columns.tolist()
-        cols.remove('Feature')
-        
-        # Group similar statistics together
-        stats = ['count', 'unique', 'top', 'freq', 'bottom', 'freq_bottom', 
-                'top_percentage', 'bottom_percentage', 'n_categories']
-        new_cols = ['Feature']
-        
-        for stat in stats:
-            stat_cols = [col for col in cols if stat in col]
-            new_cols.extend(stat_cols)
-            
-        final_summary = final_summary[new_cols]
-    
+        if class_summaries:
+            all_class_summaries = class_summaries[0]
+            for summary in class_summaries[1:]:
+                all_class_summaries = pd.merge(all_class_summaries, summary, on='Feature')
+
+            # Merge with overall summary
+            final_summary = pd.merge(final_summary, all_class_summaries, on='Feature')
+
+            # Reorder columns to group statistics by type rather than by class
+            cols = final_summary.columns.tolist()
+            cols.remove('Feature')
+
+            stats = ['count', 'unique', 'top', 'freq', 'bottom', 'freq_bottom',
+                    'top_percentage', 'bottom_percentage', 'n_categories']
+            new_cols = ['Feature']
+
+            for stat in stats:
+                stat_cols = [col for col in cols if stat in col]
+                new_cols.extend(stat_cols)
+
+            final_summary = final_summary[new_cols]
+
     return final_summary
 
 ## Describe date columns
@@ -219,7 +254,16 @@ def describe_date_columns(df: pd.DataFrame, date_columns: List[str]) -> pd.DataF
     >>> # Analyze multiple date columns
     >>> date_stats = describe_date_columns(df, ['start_date', 'end_date', 'modified_date'])
     """
-    dates_summary = df[date_columns].describe().transpose()
+    parsed = df[date_columns].copy()
+    for col in date_columns:
+        try:
+            parsed[col] = pd.to_datetime(parsed[col])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Column '{col}' could not be parsed as datetime: {exc}"
+            ) from exc
+
+    dates_summary = parsed.describe().transpose()
     
     # Basic range calculations
     dates_summary['date_range_days'] = dates_summary['max'] - dates_summary['min']
@@ -229,7 +273,7 @@ def describe_date_columns(df: pd.DataFrame, date_columns: List[str]) -> pd.DataF
     # Additional temporal features
     for col in date_columns:
         # Distribution across time periods
-        dates = df[col].dropna()
+        dates = parsed[col].dropna()
         dates_summary.loc[col, 'unique_years'] = dates.dt.year.nunique()
         dates_summary.loc[col, 'unique_months'] = dates.dt.to_period('M').nunique()
         dates_summary.loc[col, 'unique_days'] = dates.dt.date.nunique()

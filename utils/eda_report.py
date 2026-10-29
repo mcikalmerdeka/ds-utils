@@ -393,21 +393,22 @@ def generate_eda_report(
     # ── 6. Correlation Analysis ───────────────────────────────────────────────────
     corr_target_html = ""
     corr_high_html = ""
+
+    if numeric_features and target and target in column_types["numeric"]:
+        with contextlib.redirect_stdout(io.StringIO()):
+            feature_target_corr = calculate_correlation_tabular(
+                df[numeric_features + [target]],
+                target_col=target,
+                method=corr_method,
+                corr_type="feature_target",
+            )
+        if not feature_target_corr.empty:
+            corr_target_html = _df_to_html(feature_target_corr)
+
     if len(numeric_features) >= 2:
         if verbose:
             print("[5/6] Computing correlations...")
         corr_img = _plot_correlation_heatmap(df, numeric_features, method=corr_method)
-
-        if target and target in column_types["numeric"]:
-            with contextlib.redirect_stdout(io.StringIO()):
-                feature_target_corr = calculate_correlation_tabular(
-                    df[numeric_features + [target]],
-                    target_col=target,
-                    method=corr_method,
-                    corr_type="feature_target",
-                )
-            if not feature_target_corr.empty:
-                corr_target_html = _df_to_html(feature_target_corr)
 
         high_corr = _get_high_correlations(
             df, numeric_features, method=corr_method, threshold=corr_threshold
