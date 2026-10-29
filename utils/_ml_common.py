@@ -21,6 +21,8 @@ from sklearn.model_selection import (
 )
 from tqdm import tqdm
 
+from ._plotting import finalize_figure
+
 
 @dataclass
 class FoldResult:
@@ -292,10 +294,7 @@ def _draw_learning_curves(
     ax.legend(loc="best", fontsize=11)
     ax.grid(True, alpha=0.3)
 
-    plt.tight_layout()
-    if show:
-        plt.show()
-    return fig
+    return finalize_figure(fig, show=show)
 
 
 def _draw_validation_curves(
@@ -350,10 +349,7 @@ def _draw_validation_curves(
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    plt.tight_layout()
-    if show:
-        plt.show()
-    return fig
+    return finalize_figure(fig, show=show)
 
 
 def plot_learning_curves(

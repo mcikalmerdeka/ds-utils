@@ -20,6 +20,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 from ._ml_common import REGRESSION_TASK, tune_models
+from ._plotting import finalize_figure
 
 # ╔══════════════════════════════════════════════════════════════════════════════════╗
 # ║            Functions for Machine Learning Evaluation                             ║
@@ -38,7 +39,8 @@ def eval_regression(
     plot_residuals_dist=True,
     n_splits=5,
     n_repeats=3,
-    random_state=42
+    random_state=42,
+    show_plots=True
 ) -> dict:
     """
     Comprehensively evaluate a regression model using multiple metrics 
@@ -81,6 +83,9 @@ def eval_regression(
         Number of times to repeat cross-validation
     random_state : int, optional (default=42)
         Seed for reproducibility of cross-validation splits
+    show_plots : bool, optional (default=True)
+        Whether to call ``plt.show`` after building each figure. Set False to
+        keep figures open without blocking (notebooks, tests, batch jobs).
 
     Example:
     --------
@@ -290,8 +295,7 @@ def eval_regression(
             ax2.text(0.05, 0.95, f'R² = {r2_test:.4f}', transform=ax2.transAxes,
                     verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
             
-            plt.tight_layout()
-            plt.show()
+            finalize_figure(fig, show=show_plots)
 
         # Plot 2: Residuals vs Predicted
         if plot_residuals:
@@ -319,8 +323,7 @@ def eval_regression(
             ax2.set_title(f'Residuals vs Predicted - Test Set\n{model.__class__.__name__}')
             ax2.grid(True, alpha=0.3)
             
-            plt.tight_layout()
-            plt.show()
+            finalize_figure(fig, show=show_plots)
 
         # Plot 3: Residuals Distribution
         if plot_residuals_dist:
@@ -369,8 +372,7 @@ def eval_regression(
             ax2.legend()
             ax2.grid(True, alpha=0.3)
             
-            plt.tight_layout()
-            plt.show()
+            finalize_figure(fig, show=show_plots)
 
         return metrics
 
@@ -379,7 +381,9 @@ def eval_regression(
         raise
 
 # Function to compare cross-validated metrics from multiple models
-def compare_cv_metrics(metrics_dict: dict) -> pd.DataFrame:
+def compare_cv_metrics(
+    metrics_dict: dict, *, as_numeric: bool = False
+) -> pd.DataFrame:
     """
     Compare cross-validated metrics from multiple models in a single table.
     
@@ -391,6 +395,8 @@ def compare_cv_metrics(metrics_dict: dict) -> pd.DataFrame:
     metrics_dict : dict
         Dictionary with model names as keys and metrics dictionaries as values.
         Format: {'model_name': metrics_dict_from_eval_regression}
+    as_numeric : bool, optional (default=False)
+        Return raw float means instead of the formatted strings.
         
     Returns:
     --------
@@ -424,15 +430,14 @@ def compare_cv_metrics(metrics_dict: dict) -> pd.DataFrame:
                 mean_val = metrics['cv'][metric]['test_mean']
                 std_val = metrics['cv'][metric]['test_std']
                 
-                # Format based on metric type
-                if metric == 'mape':
+                if as_numeric:
+                    row[f'{metric.upper()}'] = float(mean_val)
+                elif metric == 'mape':
                     row[f'{metric.upper()}'] = f"{mean_val*100:.2f}% ± {std_val*100:.2f}%"
-                elif metric == 'r2':
-                    row[f'{metric.upper()}'] = f"{mean_val:.4f} ± {std_val:.4f}"
                 else:
                     row[f'{metric.upper()}'] = f"{mean_val:.4f} ± {std_val:.4f}"
             else:
-                row[f'{metric.upper()}'] = 'N/A'
+                row[f'{metric.upper()}'] = np.nan if as_numeric else 'N/A'
         
         data.append(row)
     
@@ -463,7 +468,8 @@ def tune_pipelines(
     n_jobs=-1,
     plot_validation_curves=False,
     plot_learning_curves=True,
-    progress_bar=False
+    progress_bar=False,
+    show=True
 ) -> tuple:
     """
     Perform hyperparameter tuning with grid/random search and optional curves.
@@ -495,6 +501,7 @@ def tune_pipelines(
         plot_validation_curves=plot_validation_curves,
         plot_learning_curves=plot_learning_curves,
         progress_bar=progress_bar,
+        show=show,
     )
 
 
@@ -725,7 +732,8 @@ def tune_single_model(
     display=True,
     plot_validation_curves=False,
     plot_learning_curves=True,
-    progress_bar=False
+    progress_bar=False,
+    show=True
 ) -> tuple:
     """
     Tune a single regression model using grid or random search.
@@ -801,7 +809,8 @@ def tune_single_model(
         display=display,
         plot_validation_curves=plot_validation_curves,
         plot_learning_curves=plot_learning_curves,
-        progress_bar=progress_bar
+        progress_bar=progress_bar,
+        show=show
     )
     
     return fitted_models[model_name], fit_times[0]
@@ -821,7 +830,8 @@ def tune_all_models(
     random_state=42,
     display=True,
     plot_learning_curves=True,
-    progress_bar=True
+    progress_bar=True,
+    show=True
 ) -> tuple:
     """
     Tune multiple regression models using grid or random search.
@@ -901,7 +911,8 @@ def tune_all_models(
         random_state=random_state,
         display=display,
         plot_learning_curves=plot_learning_curves,
-        progress_bar=progress_bar
+        progress_bar=progress_bar,
+        show=show
     )
 
     return fitted_models, times

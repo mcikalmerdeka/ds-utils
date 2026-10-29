@@ -29,6 +29,7 @@ from ._ml_common import (
     collect_fold_results,
     tune_models,
 )
+from ._plotting import finalize_figure
 
 # ╔══════════════════════════════════════════════════════════════════════════════════╗
 # ║            Functions for Machine Learning Evaluation                             ║
@@ -298,9 +299,7 @@ def eval_classification(
             ax.set_title(
                 f"{title_prefix} Confusion Matrix - {model.__class__.__name__}"
             )
-            plt.tight_layout()
-            if show_plots:
-                plt.show()
+            finalize_figure(fig, show=show_plots)
             if return_figures:
                 figures["confusion_matrix"] = fig
 
@@ -431,10 +430,7 @@ def _plot_roc_curve(
     )
     ax.legend(loc="lower right", fontsize=10)
     ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    if show:
-        plt.show()
-    return fig
+    return finalize_figure(fig, show=show)
 
 
 def _plot_pr_curve(
@@ -505,10 +501,7 @@ def _plot_pr_curve(
     )
     ax.legend(loc="lower left", fontsize=10)
     ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    if show:
-        plt.show()
-    return fig
+    return finalize_figure(fig, show=show)
 
 
 def _plot_calibration_curve(
@@ -573,10 +566,7 @@ def _plot_calibration_curve(
     )
     ax.legend(loc="upper left", fontsize=10)
     ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    if show:
-        plt.show()
-    return fig
+    return finalize_figure(fig, show=show)
 
 
 def _plot_threshold_analysis(
@@ -658,13 +648,12 @@ def _plot_threshold_analysis(
     )
     ax.legend(loc="best", fontsize=10)
     ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    if show:
-        plt.show()
-    return fig
+    return finalize_figure(fig, show=show)
 
 
-def compare_cv_metrics(metrics_dict: dict) -> pd.DataFrame:
+def compare_cv_metrics(
+    metrics_dict: dict, *, as_numeric: bool = False
+) -> pd.DataFrame:
     """
     Compare cross-validated metrics from multiple classification models in a single table.
     
@@ -676,6 +665,8 @@ def compare_cv_metrics(metrics_dict: dict) -> pd.DataFrame:
     metrics_dict : dict
         Dictionary with model names as keys and metrics dictionaries as values.
         Format: {'model_name': metrics_dict_from_eval_classification}
+    as_numeric : bool, optional (default=False)
+        Return raw float means instead of the formatted percentage strings.
         
     Returns:
     --------
@@ -705,9 +696,14 @@ def compare_cv_metrics(metrics_dict: dict) -> pd.DataFrame:
             if 'cv' in metrics and metric in metrics['cv']:
                 mean_val = metrics['cv'][metric]['test_mean']
                 std_val = metrics['cv'][metric]['test_std']
-                row[f'{metric.upper()}'] = f"{mean_val*100:.2f}% ± {std_val*100:.2f}%"
+                if as_numeric:
+                    row[f'{metric.upper()}'] = float(mean_val)
+                else:
+                    row[f'{metric.upper()}'] = (
+                        f"{mean_val*100:.2f}% ± {std_val*100:.2f}%"
+                    )
             else:
-                row[f'{metric.upper()}'] = 'N/A'
+                row[f'{metric.upper()}'] = np.nan if as_numeric else 'N/A'
         
         data.append(row)
     
@@ -737,7 +733,8 @@ def tune_pipelines(
     n_jobs=-1,
     plot_validation_curves=False,
     plot_learning_curves=True,
-    progress_bar=False
+    progress_bar=False,
+    show=True
 ) -> tuple:
     """
     Perform hyperparameter tuning with grid/random search and optional curves.
@@ -769,6 +766,7 @@ def tune_pipelines(
         plot_validation_curves=plot_validation_curves,
         plot_learning_curves=plot_learning_curves,
         progress_bar=progress_bar,
+        show=show,
     )
 
 
@@ -964,7 +962,8 @@ def tune_single_model(
     display=True,
     plot_validation_curves=False,
     plot_learning_curves=True,
-    progress_bar=False
+    progress_bar=False,
+    show=True
 ) -> tuple:
     """
     Tune a single model using grid or random search.
@@ -1037,7 +1036,8 @@ def tune_single_model(
         display=display,
         plot_validation_curves=plot_validation_curves,
         plot_learning_curves=plot_learning_curves,
-        progress_bar=progress_bar
+        progress_bar=progress_bar,
+        show=show
     )
     
     return fitted_models[model_name], fit_times[0]
@@ -1057,7 +1057,8 @@ def tune_all_models(
     random_state=42,
     display=True,
     plot_learning_curves=True,
-    progress_bar=True
+    progress_bar=True,
+    show=True
 ) -> tuple:
     """
     Tune multiple classification models using grid or random search.
@@ -1133,7 +1134,8 @@ def tune_all_models(
         random_state=random_state,
         display=display,
         plot_learning_curves=plot_learning_curves,
-        progress_bar=progress_bar
+        progress_bar=progress_bar,
+        show=show
     )
 
     return fitted_models, times
