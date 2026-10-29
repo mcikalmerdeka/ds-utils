@@ -395,9 +395,17 @@ def filter_outliers(data: pd.DataFrame, columns: List[str], method: str = 'iqr',
         elif method.lower() == 'zscore':
             z_scores = pd.Series(np.nan, index=series.index, dtype=float)
             valid_mask = ~missing_mask
-            if valid_mask.any():
-                z_scores.loc[valid_mask] = np.abs(stats.zscore(series[valid_mask]))
-            filter_outlier = missing_mask | (z_scores < threshold)
+            valid_values = series[valid_mask]
+            valid_std = valid_values.std(ddof=0)
+            if len(valid_values) > 1 and valid_std > 0:
+                z_scores.loc[valid_mask] = np.abs(
+                    (valid_values - valid_values.mean()) / valid_std
+                )
+            # Non-finite z-scores occur for constant/single-row columns; such
+            # rows are valid observations, not outliers.
+            filter_outlier = (
+                missing_mask | ~np.isfinite(z_scores) | (z_scores < threshold)
+            )
 
             mean = series.mean()
             std = series.std()
@@ -856,7 +864,9 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
                         )
                         mapped_values = mapped_values.mask(unknown_mask, 0)
 
-                    df_preprocessed[col] = mapped_values
+                    # Preserve the established binary-encoding contract:
+                    # missing values are encoded as 0 during transform.
+                    df_preprocessed[col] = mapped_values.fillna(0)
     
     # ===== STEP 1: Handle ordinal and one-hot encoding =====
     sklearn_encoding_cols = ordinal_columns + nominal_columns
@@ -871,8 +881,9 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
             # Build transformers for training
             transformers = []
             for col in ordinal_columns:
-                # OrdinalEncoder doesn't support 'ignore', map it to 'use_encoded_value'
-                if handle_unknown == 'ignore':
+                # OrdinalEncoder doesn't support 'ignore'; both policies map
+                # unseen categories to -1.
+                if handle_unknown in {'ignore', 'use_encoded_value'}:
                     ord_handle_unknown = 'use_encoded_value'
                     ord_unknown_value = -1
                 else:
@@ -1084,7 +1095,22 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
                     df_final[col] = df_final[col].astype(original_dtypes[col])
                 except Exception as e:
                     print(f"Warning: Could not convert column '{col}' back to {original_dtypes[col]}. Error: {e}")
-    
+
+    if is_fitting:
+        fitted_encoders["__output_columns__"] = list(df_final.columns)
+    else:
+        expected_columns = fitted_encoders.get("__output_columns__")
+        if expected_columns is not None:
+            missing_columns = [
+                col for col in expected_columns if col not in df_final.columns
+            ]
+            if missing_columns:
+                raise ValueError(
+                    "Cannot transform data: fitted encoder expects columns "
+                    f"that are missing from the input: {missing_columns}"
+                )
+            df_final = df_final.reindex(columns=expected_columns)
+
     return df_final, fitted_encoders
 
 

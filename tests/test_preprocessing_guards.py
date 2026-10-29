@@ -43,6 +43,27 @@ def test_filter_outliers_detection_reports_zero_valued_outlier():
     assert bool(summary.loc[0, "Outlier Exist"]) is True
 
 
+def test_filter_outliers_zscore_keeps_constant_column_rows():
+    df = pd.DataFrame({"a": [10.0, 10.0, 10.0]})
+
+    result = filter_outliers(df, ["a"], method="zscore", threshold=3.0)
+    summary = filter_outliers(
+        df, ["a"], method="zscore", threshold=3.0, detect_only=True, verbose=False
+    )
+
+    assert len(result) == 3
+    assert summary.loc[0, "Outlier Data"] == 0
+    assert bool(summary.loc[0, "Outlier Exist"]) is False
+
+
+def test_filter_outliers_zscore_keeps_single_row():
+    df = pd.DataFrame({"a": [5.0]})
+
+    result = filter_outliers(df, ["a"], method="zscore", threshold=3.0)
+
+    assert len(result) == 1
+
+
 def test_handle_missing_values_median_rejects_strings_with_actionable_error():
     df = pd.DataFrame({"a": ["x", None, "y"]})
 

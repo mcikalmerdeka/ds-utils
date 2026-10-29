@@ -86,21 +86,33 @@ _COMMON_ENGLISH_WORDS = frozenset([
     'channel', 'music', 'song', 'official', 'movie', 'film', 'trailer'
 ])
 
-# Lazy-loaded langid identifier
+# Lazy-loaded langid identifiers. The constrained one is reused for explicit
+# target sets; the all-language one is kept separate so a previous constrained
+# call cannot leak into a later "detect all non-English" call.
 _identifier: Optional[LanguageIdentifier] = None
+_identifier_all: Optional[LanguageIdentifier] = None
 
 
-def _get_identifier() -> LanguageIdentifier:
-    """Return a lazily initialized langid identifier."""
-    global _identifier
-    if _identifier is None:
-        if not LANGID_AVAILABLE:
-            raise ImportError(
-                "Language detection requires the optional 'langid' package. "
-                "Install with: pip install data-science-utils[translate]"
-            )
-        _identifier = LanguageIdentifier.from_modelstring(model, norm_probs=True)
-    return _identifier
+def _get_identifier(
+    target_langs: Optional[Set[str]] = None,
+) -> LanguageIdentifier:
+    """Return a langid identifier, optionally constrained to target languages."""
+    global _identifier, _identifier_all
+    if not LANGID_AVAILABLE:
+        raise ImportError(
+            "Language detection requires the optional 'langid' package. "
+            "Install with: pip install data-science-utils[translate]"
+        )
+
+    if target_langs:
+        if _identifier is None:
+            _identifier = LanguageIdentifier.from_modelstring(model, norm_probs=True)
+        _identifier.set_languages(list(target_langs) + ['en'])
+        return _identifier
+
+    if _identifier_all is None:
+        _identifier_all = LanguageIdentifier.from_modelstring(model, norm_probs=True)
+    return _identifier_all
 
 
 def _require_translate_deps() -> None:
@@ -404,26 +416,24 @@ def detect_language_rows(
     elif isinstance(target_langs, list):
         target_langs = set(target_langs)
     
-    # Configure the identifier with target languages + English
-    _require_translate_deps()
-    identifier = _get_identifier()
-    if target_langs:
-        identifier.set_languages(list(target_langs) + ['en'])
-    
     target_lang_label = ', '.join(sorted(target_langs)) if target_langs else 'non-English'
-    
+
     # Collect all unique non-null strings across all target columns
     print(f"Collecting unique texts from columns: {columns}...")
     all_texts: set[str] = set()
     for col in columns:
         if col in df.columns:
             all_texts.update(df[col].dropna().unique())
-    
+
     total_unique = len(all_texts)
     print(f"Found {total_unique:,} unique texts to check")
-    
+
+    # No texts means detection needs no optional dependencies at all.
     if total_unique == 0:
         return df.iloc[0:0], df
+
+    # Configure the identifier with target languages + English.
+    identifier = _get_identifier(target_langs)
 
     # Prepare data for detection
     text_list = list(all_texts)

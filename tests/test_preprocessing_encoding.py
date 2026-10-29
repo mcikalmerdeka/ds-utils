@@ -51,3 +51,50 @@ def test_feature_encoding_rejects_use_encoded_value_for_nominal():
             nominal_columns=["cat"],
             handle_unknown="use_encoded_value",
         )
+
+
+def test_feature_encoding_fit_and_transform_have_same_column_order():
+    train = pd.DataFrame(
+        {"cat": ["a", "b", "a"], "free_text": ["x", "y", "z"], "num": [1, 2, 3]}
+    )
+    test = pd.DataFrame(
+        {"cat": ["a", "b", "a"], "free_text": ["p", "q", "r"], "num": [4, 5, 6]}
+    )
+
+    fitted, encoders = feature_encoding(train, nominal_columns=["cat"])
+    transformed, _ = feature_encoding(test, nominal_columns=["cat"], encoders=encoders)
+
+    assert list(fitted.columns) == list(transformed.columns)
+    assert transformed["free_text"].tolist() == ["p", "q", "r"]
+
+
+def test_feature_encoding_accepts_use_encoded_value_for_ordinal():
+    train = pd.DataFrame({"size": ["small", "medium", "small"]})
+    test = pd.DataFrame({"size": ["xlarge", "small"]})
+    categories = {"size": ["small", "medium", "large"]}
+
+    _, encoders = feature_encoding(
+        train,
+        ordinal_columns=["size"],
+        ordinal_categories=categories,
+        handle_unknown="use_encoded_value",
+    )
+    transformed, _ = feature_encoding(
+        test,
+        ordinal_columns=["size"],
+        ordinal_categories=categories,
+        encoders=encoders,
+        handle_unknown="use_encoded_value",
+    )
+
+    assert transformed["size"].tolist() == [-1.0, 0.0]
+
+
+def test_feature_encoding_fills_missing_binary_values_with_zero():
+    train = pd.DataFrame({"b": ["yes", "no", "yes"]})
+    test = pd.DataFrame({"b": [None, "no"]})
+    _, encoders = feature_encoding(train, binary_columns=["b"])
+
+    encoded, _ = feature_encoding(test, binary_columns=["b"], encoders=encoders)
+
+    assert encoded["b"].tolist() == [0.0, 0.0]

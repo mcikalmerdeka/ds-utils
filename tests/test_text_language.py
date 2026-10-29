@@ -58,7 +58,7 @@ def test_empty_target_set_detects_non_english():
 def test_detect_language_rows_target_none_finds_non_english(monkeypatch):
     monkeypatch.setattr(translation_utils, "_require_translate_deps", lambda: None)
     monkeypatch.setattr(
-        translation_utils, "_get_identifier", lambda: DummyIdentifier()
+        translation_utils, "_get_identifier", lambda *args, **kwargs: DummyIdentifier()
     )
     df = pd.DataFrame({"text": ["Hola amigo", "Hello world"]})
 
@@ -68,3 +68,43 @@ def test_detect_language_rows_target_none_finds_non_english(monkeypatch):
 
     assert target["text"].tolist() == ["Hola amigo"]
     assert other["text"].tolist() == ["Hello world"]
+
+
+def test_detect_language_rows_all_null_does_not_require_extras():
+    df = pd.DataFrame({"text": [None, None]})
+
+    target, other = translation_utils.detect_language_rows(
+        df, ["text"], target_langs=None, use_parallel=False
+    )
+
+    assert target.empty
+    assert other.equals(df)
+
+
+class FakeLanguageIdentifier:
+    def __init__(self, languages=None):
+        self.languages = list(languages or ["en", "es", "fr"])
+
+    @classmethod
+    def from_modelstring(cls, model, norm_probs=True):
+        return cls()
+
+    def set_languages(self, languages):
+        self.languages = list(languages)
+
+
+def test_get_identifier_does_not_leak_explicit_language_constraints(monkeypatch):
+    monkeypatch.setattr(translation_utils, "LANGID_AVAILABLE", True)
+    monkeypatch.setattr(
+        translation_utils, "LanguageIdentifier", FakeLanguageIdentifier
+    )
+    monkeypatch.setattr(translation_utils, "model", object())
+    monkeypatch.setattr(translation_utils, "_identifier", None, raising=False)
+    monkeypatch.setattr(translation_utils, "_identifier_all", None, raising=False)
+
+    constrained = translation_utils._get_identifier({"hi"})
+    full = translation_utils._get_identifier(None)
+
+    assert constrained is not full
+    assert set(constrained.languages) == {"hi", "en"}
+    assert "es" in full.languages
