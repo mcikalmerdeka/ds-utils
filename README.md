@@ -106,7 +106,7 @@ Supported regression models: Linear Regression, Ridge, Lasso, ElasticNet, KNN, D
 
 ## 📦 Installation
 
-This project uses `uv` for dependency management.
+The distribution is `data-science-utils`, and the import package is `utils`. This project uses `uv` for dependency management.
 
 ```bash
 # Install core dependencies

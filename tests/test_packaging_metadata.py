@@ -49,6 +49,15 @@ def test_project_identity_is_unchanged():
     assert project["requires-python"] == ">=3.14"
 
 
+def test_project_description_is_not_a_placeholder():
+    description = _project_metadata()["description"]
+
+    assert (
+        description
+        == "Reusable utilities for rapid EDA, preprocessing, modeling, and reporting"
+    )
+
+
 def test_requirements_txt_is_generated_from_pyproject():
     lines = Path("requirements.txt").read_text(encoding="utf-8").splitlines()
 
