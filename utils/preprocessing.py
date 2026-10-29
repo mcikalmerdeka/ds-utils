@@ -13,6 +13,16 @@ from typing import List, Dict, Union, Optional, Any, Tuple
 # ║                       Functions for Data Pre-Processing                          ║
 # ╚══════════════════════════════════════════════════════════════════════════════════╝
 
+_OUTLIER_SUMMARY_COLUMNS = [
+    'Column Name',
+    'Outlier Exist',
+    'Lower Limit',
+    'Upper Limit',
+    'Outlier Data',
+    'Non-Outlier Data',
+    'Outlier Percentage (%)',
+]
+
 
 def _apply_log1p(series: pd.Series, column: str) -> pd.Series:
     """Apply log1p only when all observed values are non-negative."""
@@ -352,7 +362,7 @@ def filter_outliers(data: pd.DataFrame, columns: List[str], method: str = 'iqr',
     """
     if columns is None or len(columns) == 0:
         if detect_only:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=_OUTLIER_SUMMARY_COLUMNS)
         return data if not return_mask else (data, np.array([True] * len(data)))
 
     if method.lower() not in ['iqr', 'zscore']:
@@ -362,6 +372,11 @@ def filter_outliers(data: pd.DataFrame, columns: List[str], method: str = 'iqr',
     missing_cols = [col for col in columns if col not in data.columns]
     if missing_cols:
         raise ValueError(f"Columns not found in dataframe: {missing_cols}")
+
+    # Detection statistics are undefined for an empty frame; return the
+    # documented summary schema without dividing by zero.
+    if len(data) == 0 and detect_only:
+        return pd.DataFrame(columns=_OUTLIER_SUMMARY_COLUMNS)
     
     # Initialize tracking variables for detection mode
     if detect_only:
@@ -561,6 +576,9 @@ def feature_scaling(data: pd.DataFrame, scaling_config: Optional[Dict[str, Any]]
         scaler=scalers
     )
     """
+    if data.empty:
+        raise ValueError("Cannot scale an empty DataFrame")
+
     df_scaled = data.copy()
     
     # --- MODE 1: Multiple scaling methods (new API) ---
@@ -819,6 +837,25 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
     # Initialize encoder storage
     is_fitting = encoders is None
     fitted_encoders = {} if is_fitting else encoders.copy()
+
+    if not is_fitting:
+        requested_encoders = (
+            [f'ordinal_{col}' for col in ordinal_columns]
+            + [f'onehot_{col}' for col in nominal_columns]
+            + [f'frequency_{col}' for col in frequency_columns]
+            + [f'binary_{col}' for col in binary_columns]
+        )
+        if mean_encoding_columns:
+            requested_encoders.append('mean_encoder')
+        missing_encoders = [
+            key for key in requested_encoders if key not in fitted_encoders
+        ]
+        if missing_encoders:
+            raise ValueError(
+                "Missing fitted encoders for: "
+                + ", ".join(missing_encoders)
+                + ". Pass the encoders returned by the training call."
+            )
     
     # ===== STEP 0: Handle binary (label) encoding =====
     if binary_columns:

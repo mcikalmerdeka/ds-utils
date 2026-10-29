@@ -30,3 +30,14 @@ def test_eda_report_single_numeric_feature_includes_target_correlation():
 
     assert "No target column provided or no numeric features." not in html
     assert "Feature-Target Correlations" in html
+
+
+def test_eda_report_escapes_title():
+    df = pd.DataFrame({"x": [1.0, 2.0, 3.0]})
+
+    html = generate_eda_report(
+        df, title="<script>alert(1)</script>", verbose=False
+    )
+
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "<script>alert(1)</script>" not in html

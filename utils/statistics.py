@@ -256,6 +256,11 @@ def describe_date_columns(df: pd.DataFrame, date_columns: List[str]) -> pd.DataF
     """
     parsed = df[date_columns].copy()
     for col in date_columns:
+        if pd.api.types.is_numeric_dtype(parsed[col]):
+            raise ValueError(
+                f"Column '{col}' has a numeric dtype. Convert it to datetime "
+                "explicitly before calling describe_date_columns."
+            )
         try:
             parsed[col] = pd.to_datetime(parsed[col])
         except (TypeError, ValueError) as exc:
@@ -267,39 +272,64 @@ def describe_date_columns(df: pd.DataFrame, date_columns: List[str]) -> pd.DataF
     
     # Basic range calculations
     dates_summary['date_range_days'] = dates_summary['max'] - dates_summary['min']
-    dates_summary['date_range_months'] = dates_summary['date_range_days'].apply(lambda x: x.days / 30)
-    dates_summary['date_range_years'] = dates_summary['date_range_days'].apply(lambda x: x.days / 365)
+    dates_summary['date_range_months'] = dates_summary['date_range_days'].apply(
+        lambda x: x.days / 30 if pd.notna(x) else np.nan
+    )
+    dates_summary['date_range_years'] = dates_summary['date_range_days'].apply(
+        lambda x: x.days / 365 if pd.notna(x) else np.nan
+    )
     
     # Additional temporal features
     for col in date_columns:
         # Distribution across time periods
         dates = parsed[col].dropna()
+        total_dates = len(dates)
         dates_summary.loc[col, 'unique_years'] = dates.dt.year.nunique()
         dates_summary.loc[col, 'unique_months'] = dates.dt.to_period('M').nunique()
         dates_summary.loc[col, 'unique_days'] = dates.dt.date.nunique()
         
         # Temporal patterns
-        dates_summary.loc[col, 'weekend_percentage'] = (dates.dt.dayofweek.isin([5, 6]).mean()) * 100
-        dates_summary.loc[col, 'business_hours_percentage'] = (
-            dates[dates.dt.hour.between(9, 17)].count() / dates.count()
-        ) * 100 if hasattr(dates.dt, 'hour') else np.nan
+        dates_summary.loc[col, 'weekend_percentage'] = (
+            dates.dt.dayofweek.isin([5, 6]).mean() * 100
+            if total_dates else np.nan
+        )
+        if hasattr(dates.dt, 'hour') and total_dates:
+            dates_summary.loc[col, 'business_hours_percentage'] = (
+                dates[dates.dt.hour.between(9, 17)].count() / total_dates
+            ) * 100
+        else:
+            dates_summary.loc[col, 'business_hours_percentage'] = np.nan
         
         # Seasonality indicators
-        dates_summary.loc[col, 'most_common_month'] = dates.dt.month.mode().iloc[0]
-        dates_summary.loc[col, 'most_common_weekday'] = dates.dt.day_name().mode().iloc[0]
+        month_mode = dates.dt.month.mode()
+        weekday_mode = dates.dt.day_name().mode()
+        dates_summary.loc[col, 'most_common_month'] = (
+            month_mode.iloc[0] if not month_mode.empty else np.nan
+        )
+        dates_summary.loc[col, 'most_common_weekday'] = (
+            weekday_mode.iloc[0] if not weekday_mode.empty else np.nan
+        )
         
         # Gaps analysis
         sorted_dates = dates.sort_values()
         gaps = sorted_dates.diff().dropna()
-        dates_summary.loc[col, 'max_gap_days'] = gaps.dt.days.max()
-        dates_summary.loc[col, 'median_gap_days'] = gaps.dt.days.median()
+        dates_summary.loc[col, 'max_gap_days'] = (
+            gaps.dt.days.max() if not gaps.empty else np.nan
+        )
+        dates_summary.loc[col, 'median_gap_days'] = (
+            gaps.dt.days.median() if not gaps.empty else np.nan
+        )
         
         # Future/Past analysis
         now = datetime.now()
-        dates_summary.loc[col, 'future_dates_percentage'] = (dates > now).mean() * 100
+        dates_summary.loc[col, 'future_dates_percentage'] = (
+            (dates > now).mean() * 100 if total_dates else np.nan
+        )
         
         # Regularity check
-        dates_summary.loc[col, 'is_regular_interval'] = gaps.dt.days.std() < 1
+        dates_summary.loc[col, 'is_regular_interval'] = (
+            gaps.dt.days.std() < 1 if not gaps.empty else np.nan
+        )
     
     return dates_summary
 

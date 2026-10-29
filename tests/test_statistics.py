@@ -35,6 +35,23 @@ def test_date_summary_rejects_unparseable_values():
         describe_date_columns(df, ["d"])
 
 
+def test_date_summary_rejects_numeric_dates():
+    df = pd.DataFrame({"d": [20240101]})
+
+    with pytest.raises(ValueError, match="datetime"):
+        describe_date_columns(df, ["d"])
+
+
+def test_date_summary_handles_all_nat():
+    df = pd.DataFrame({"d": pd.to_datetime([None, None])})
+
+    result = describe_date_columns(df, ["d"])
+
+    assert len(result) == 1
+    assert np.isnan(result.loc["d", "most_common_month"])
+    assert pd.isna(result.loc["d", "most_common_weekday"])
+
+
 def test_categorical_summary_handles_empty_hue_group():
     df = pd.DataFrame(
         {

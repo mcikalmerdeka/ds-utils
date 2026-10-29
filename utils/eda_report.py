@@ -2,6 +2,7 @@ import base64
 import contextlib
 import io
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -327,6 +328,7 @@ def generate_eda_report(
 
     if title is None:
         title = "EDA Report"
+    safe_title = escape(title)
 
     report_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     column_types = _get_column_types(df)
@@ -440,7 +442,7 @@ def generate_eda_report(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
+    <title>{safe_title}</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -468,7 +470,7 @@ def generate_eda_report(
     </style>
 </head>
 <body>
-    <h1>{title}</h1>
+    <h1>{safe_title}</h1>
     <p class="meta">Generated on {report_date}</p>
 
     <div class="section">
