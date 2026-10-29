@@ -56,7 +56,7 @@ def test_empty_target_set_detects_non_english():
 
 
 def test_detect_language_rows_target_none_finds_non_english(monkeypatch):
-    monkeypatch.setattr(translation_utils, "_require_translate_deps", lambda: None)
+    monkeypatch.setattr(translation_utils, "_require_detection_deps", lambda: None)
     monkeypatch.setattr(
         translation_utils, "_get_identifier", lambda *args, **kwargs: DummyIdentifier()
     )

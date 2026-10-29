@@ -135,8 +135,11 @@ class TextPreprocessor:
         """Check if required optional dependencies are available."""
         if not NLTK_AVAILABLE:
             raise ImportError(
-                "NLTK is required for text preprocessing. "
-                "Install with: pip install nltk"
+                "NLTK is required for text preprocessing. Install the text "
+                "extras with: uv sync --extra text (or pip install "
+                "data-science-utils[text]). Then download the required corpora "
+                "with nltk.download('stopwords'), nltk.download('punkt'), and "
+                "nltk.download('wordnet')."
             )
     
     def add_stopwords(self, words: Union[str, List[str], Set[str]]) -> None:

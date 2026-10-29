@@ -93,16 +93,35 @@ _identifier: Optional[LanguageIdentifier] = None
 _identifier_all: Optional[LanguageIdentifier] = None
 
 
+def _require_detection_deps() -> None:
+    """Raise a clear ImportError if language-detection dependencies are missing."""
+    if not LANGID_AVAILABLE:
+        raise ImportError(
+            "Language detection requires the optional 'langid' package. "
+            "Install with: uv sync --extra translate "
+            "(or pip install data-science-utils[translate])"
+        )
+
+
+def _require_translation_deps() -> None:
+    """Raise a clear ImportError if translation dependencies are missing.
+
+    ``tenacity`` is optional: the module ships no-op fallback decorators.
+    """
+    if not DEEP_TRANSLATOR_AVAILABLE:
+        raise ImportError(
+            "Translation requires the optional 'deep-translator' package. "
+            "Install with: uv sync --extra translate "
+            "(or pip install data-science-utils[translate])"
+        )
+
+
 def _get_identifier(
     target_langs: Optional[Set[str]] = None,
 ) -> LanguageIdentifier:
     """Return a langid identifier, optionally constrained to target languages."""
     global _identifier, _identifier_all
-    if not LANGID_AVAILABLE:
-        raise ImportError(
-            "Language detection requires the optional 'langid' package. "
-            "Install with: pip install data-science-utils[translate]"
-        )
+    _require_detection_deps()
 
     if target_langs:
         if _identifier is None:
@@ -113,22 +132,6 @@ def _get_identifier(
     if _identifier_all is None:
         _identifier_all = LanguageIdentifier.from_modelstring(model, norm_probs=True)
     return _identifier_all
-
-
-def _require_translate_deps() -> None:
-    """Raise a clear ImportError if translation dependencies are missing."""
-    missing = []
-    if not DEEP_TRANSLATOR_AVAILABLE:
-        missing.append("deep-translator")
-    if not LANGID_AVAILABLE:
-        missing.append("langid")
-    if not TENACITY_AVAILABLE:
-        missing.append("tenacity")
-    if missing:
-        raise ImportError(
-            f"Translation utilities require optional dependencies: {', '.join(missing)}. "
-            "Install with: pip install data-science-utils[translate]"
-        )
 
 
 def _get_script_pattern(languages: Optional[Set[str]] = None) -> re.Pattern:
@@ -432,6 +435,9 @@ def detect_language_rows(
     if total_unique == 0:
         return df.iloc[0:0], df
 
+    # Detection needs langid only; translation dependencies are not required.
+    _require_detection_deps()
+
     # Configure the identifier with target languages + English.
     identifier = _get_identifier(target_langs)
 
@@ -561,7 +567,7 @@ def translate_series(
     pd.Series
         Series with translated text
     """
-    _require_translate_deps()
+    _require_translation_deps()
     result = series.copy()
 
     # Work only with non-null values
@@ -646,7 +652,7 @@ def translate_dataframe(
     ...     dest="es",    # to Spanish
     ... )
     """
-    _require_translate_deps()
+    _require_translation_deps()
     out = df if inplace else df.copy()
 
     for col in columns:
@@ -739,7 +745,7 @@ def run_translation_pipeline(
     >>> # Load final translated data later
     >>> final_df = pd.read_csv("data/multilingual_translated_translated.csv")
     """
-    _require_translate_deps()
+    _require_detection_deps()
     print("── Step 1: Language Detection ──")
     target_lang_df, other_df = detect_language_rows(
         df, 
@@ -868,7 +874,7 @@ def translate_all_text(
     >>> # Load later
     >>> final_df = pd.read_csv("data/all_translated_translated.csv")
     """
-    _require_translate_deps()
+    _require_translation_deps()
     result = df.copy()
     
     for col in columns:
