@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -731,7 +733,17 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
     binary_columns = binary_columns or []
     frequency_columns = frequency_columns or []
     ordinal_categories = ordinal_categories or {}
-    
+
+    if handle_unknown not in {"error", "ignore", "use_encoded_value"}:
+        raise ValueError(
+            "handle_unknown must be 'error', 'ignore', or 'use_encoded_value'"
+        )
+    if handle_unknown == "use_encoded_value" and nominal_columns:
+        raise ValueError(
+            "handle_unknown='use_encoded_value' is only supported for "
+            "ordinal_columns; OneHotEncoder cannot use that policy"
+        )
+
     # Validate inputs
     all_encoding_cols = ordinal_columns + nominal_columns + mean_encoding_columns + binary_columns + frequency_columns
     missing_cols = [col for col in all_encoding_cols if col not in data.columns]
@@ -787,15 +799,32 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
                 encoder_key = f'binary_{col}'
                 if encoder_key in fitted_encoders:
                     label_map = fitted_encoders[encoder_key]['mapping']
-                    df_preprocessed[col] = df_preprocessed[col].map(label_map)
-                    # Handle unknown values - map to NaN then fill with mode (0 or 1)
-                    if df_preprocessed[col].isna().any():
-                        print(f"Warning: Unknown values in binary column '{col}', mapping to 0")
-                        df_preprocessed[col] = df_preprocessed[col].fillna(0)
+                    raw_values = df_preprocessed[col]
+                    unknown_mask = raw_values.notna() & ~raw_values.isin(label_map)
+                    mapped_values = raw_values.map(label_map)
+
+                    if unknown_mask.any():
+                        unknown_values = raw_values[unknown_mask].unique().tolist()
+                        if handle_unknown == "error":
+                            raise ValueError(
+                                f"Unknown values in binary column '{col}': "
+                                f"{unknown_values}. Use handle_unknown='ignore' "
+                                "to map them to 0."
+                            )
+                        warnings.warn(
+                            f"Unknown values in binary column '{col}' mapped to 0: "
+                            f"{unknown_values}",
+                            UserWarning,
+                            stacklevel=2,
+                        )
+                        mapped_values = mapped_values.mask(unknown_mask, 0)
+
+                    df_preprocessed[col] = mapped_values
     
     # ===== STEP 1: Handle ordinal and one-hot encoding =====
     sklearn_encoding_cols = ordinal_columns + nominal_columns
-    
+    encoded_only_cols = list(ordinal_columns)
+
     if sklearn_encoding_cols:
         # Prepare data by excluding datetime and mean encoding columns
         cols_to_exclude = datetime_columns + mean_encoding_columns
@@ -865,7 +894,8 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
             
             passthrough_cols = [c for c in df_for_sklearn.columns if c not in sklearn_encoding_cols]
             encoded_column_names.extend(passthrough_cols)
-            
+            encoded_only_cols = [c for c in encoded_column_names if c not in passthrough_cols]
+
             df_sklearn_encoded = pd.DataFrame(df_sklearn_encoded, columns=encoded_column_names, index=data.index)
         else:
             # Transform using pre-fitted encoders
@@ -890,7 +920,8 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
                         oh_col_names = [f'{col}_{cat}' for cat in cats[1:]]
                     else:
                         oh_col_names = [f'{col}_{cat}' for cat in cats]
-                    
+
+                    encoded_only_cols.extend(oh_col_names)
                     oh_df = pd.DataFrame(oh_result, columns=oh_col_names, index=data.index)
                     onehot_dfs.append(oh_df)
             
@@ -899,8 +930,12 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
             if onehot_dfs:
                 df_sklearn_encoded = pd.concat([df_sklearn_encoded] + onehot_dfs, axis=1)
         
-        # Convert to numeric (excluding frequency columns that will be encoded separately)
-        cols_to_convert = [col for col in df_sklearn_encoded.columns if col not in frequency_columns]
+        # Convert only encoded columns to numeric. Passthrough object columns
+        # must remain untouched; coercing them would silently turn text into NaN.
+        cols_to_convert = [
+            col for col in encoded_only_cols
+            if col in df_sklearn_encoded.columns and col not in frequency_columns
+        ]
         for col in cols_to_convert:
             df_sklearn_encoded[col] = pd.to_numeric(df_sklearn_encoded[col], errors='coerce')
     else:
