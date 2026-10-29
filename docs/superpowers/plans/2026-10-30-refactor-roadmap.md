@@ -1,6 +1,6 @@
 # Utils Refactor Roadmap (Post-P0)
 
-**Status:** P0 and P1 correctness are complete. Branch `feat/refactor-utils` (P1 code at `e36b07e`); `uv run pytest -q` → 91 passed, 2 expected warnings.
+**Status:** P0 and P1 correctness are complete. Branch `feat/refactor-utils`; `uv run pytest -q` → 96 passed, 2 expected warnings.
 
 ## How to use this roadmap
 
@@ -50,7 +50,7 @@ Testing/tooling can be moved earlier if CI is wanted before the architecture cha
 
 - Python 3.14.3
 - pandas 2.3.3, scikit-learn 1.7.2, seaborn 0.13.2
-- 91 tests passing; two expected warnings (unknown-binary warning and seaborn `vert` deprecation)
+- 96 tests passing; two expected warnings (unknown-binary warning and seaborn `vert` deprecation)
 - P0 plan: `docs/superpowers/plans/2026-10-29-p0-correctness.md`
 - P1 plan: `docs/superpowers/plans/2026-10-30-p1-correctness.md`
 

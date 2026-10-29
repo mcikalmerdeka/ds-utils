@@ -330,8 +330,14 @@ def perform_chi_squared_test(group_a_conversions: int, group_a_total: int, group
         [group_a_conversions, group_a_total - group_a_conversions],
         [group_b_conversions, group_b_total - group_b_conversions]
     ])
-    
-    chi2, p_val, dof, ex = stats.chi2_contingency(obs)
+
+    # Chi-square is undefined when a row or column margin is zero, which
+    # happens when both arms have 0% or both have 100% conversions.
+    if (obs.sum(axis=0) == 0).any() or (obs.sum(axis=1) == 0).any():
+        chi2 = 0.0
+        p_val = 1.0
+    else:
+        chi2, p_val, dof, ex = stats.chi2_contingency(obs)
     
     rate_a = group_a_conversions / group_a_total
     rate_b = group_b_conversions / group_b_total
@@ -377,10 +383,18 @@ def perform_z_test_proportions(group_a_conversions: int, group_a_total: int, gro
     count = np.array([group_a_conversions, group_b_conversions])
     nobs = np.array([group_a_total, group_b_total])
     
-    stat, p_val = proportions_ztest(count, nobs)
-    
     rate_a = group_a_conversions / group_a_total
     rate_b = group_b_conversions / group_b_total
+
+    # With 0% or 100% in both arms the pooled variance is zero and the
+    # z-statistic is undefined. Treat the result as non-significant instead
+    # of returning NaN with a runtime warning.
+    pooled_rate = count.sum() / nobs.sum()
+    if pooled_rate == 0.0 or pooled_rate == 1.0:
+        stat = np.nan
+        p_val = 1.0
+    else:
+        stat, p_val = proportions_ztest(count, nobs)
     
     return {
         'test': 'Z-Test Proportions',

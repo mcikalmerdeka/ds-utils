@@ -31,6 +31,18 @@ def test_infer_period_handles_modern_aliases(freq, expected):
     assert _infer_period(series) == expected
 
 
+@pytest.mark.parametrize("freq", ["min", "15min", "ms"])
+def test_infer_period_does_not_treat_subhourly_as_monthly(freq):
+    series = pd.Series(
+        np.arange(12, dtype=float),
+        index=pd.date_range("2024-01-01", periods=12, freq=freq),
+    )
+
+    # The generic fallback is min(len // 2, 12); sub-hourly aliases must not
+    # be mistaken for the monthly 'M'/'ME' family.
+    assert _infer_period(series) == 6
+
+
 def test_outlier_mask_preserves_input_index():
     index = pd.Index([10, 11, 12, 13])
     series = pd.Series([1.0, 2.0, np.nan, 100.0], index=index)

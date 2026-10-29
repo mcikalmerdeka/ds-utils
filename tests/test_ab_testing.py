@@ -123,3 +123,23 @@ def test_continuous_result_reports_lift_and_ci():
     assert result["absolute_lift"] == pytest.approx(expected_lift)
     assert result["relative_lift"] == pytest.approx(expected_lift / group_a.mean())
     assert result["ci_lower"] <= result["absolute_lift"] <= result["ci_upper"]
+
+
+@pytest.mark.parametrize("conversion", [0, 1])
+def test_binary_all_same_outcome_is_non_significant(conversion):
+    data = pd.DataFrame(
+        {
+            "group": ["A"] * 20 + ["B"] * 20,
+            "metric": [conversion] * 40,
+        }
+    )
+
+    result = analyze_ab_test_results(
+        data, "metric", "group", metric_type="binary"
+    )
+
+    assert result["p_value"] == 1.0
+    assert result["z_test_p_value"] == 1.0
+    assert bool(result["significant"]) is False
+    assert result["absolute_lift"] == 0.0
+    assert result["ci_lower"] <= 0.0 <= result["ci_upper"]

@@ -35,16 +35,19 @@ def _infer_period(series: pd.Series) -> int:
         if freq:
             # Accept both legacy uppercase aliases and modern lowercase
             # aliases (e.g. 'h', 'ME', 'QE-DEC'), including count prefixes.
-            normalized = freq.upper().lstrip("0123456789")
-            if normalized.startswith("W"):
+            # Keep the raw case for month aliases: 'MS' is month-start while
+            # 'ms' is milliseconds, and 'min' is minutes.
+            normalized = freq.lstrip("0123456789")
+            upper = normalized.upper()
+            if upper.startswith("W"):
                 return 52
-            if normalized.startswith("Q") or normalized.startswith("BQ"):
+            if upper.startswith("Q") or upper.startswith("BQ"):
                 return 4
-            if normalized.startswith("M") or normalized.startswith("BM"):
+            if normalized in {"M", "ME", "MS", "BM", "BME", "BMS", "CBM", "CBMS"}:
                 return 12
-            if normalized in ("H", "BH"):
+            if upper in ("H", "BH"):
                 return 24
-            if normalized in ("D", "B"):
+            if upper in ("D", "B"):
                 return 7
     return min(len(series) // 2, 12)
 
