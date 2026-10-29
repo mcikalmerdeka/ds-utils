@@ -8,26 +8,27 @@ from sklearn.metrics import (
     roc_curve,
     average_precision_score,
     precision_recall_curve,
-    get_scorer,
     confusion_matrix
 )
 from sklearn.calibration import calibration_curve
-from sklearn.model_selection import RepeatedStratifiedKFold, RandomizedSearchCV, GridSearchCV, learning_curve
-from sklearn.base import clone
+from sklearn.model_selection import RepeatedStratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from xgboost import XGBClassifier
-import time
-from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from ._ml_common import aggregate_fold_metrics, collect_fold_results
+from ._ml_common import (
+    CLASSIFICATION_TASK,
+    aggregate_fold_metrics,
+    collect_fold_results,
+    tune_models,
+)
 
 # ╔══════════════════════════════════════════════════════════════════════════════════╗
 # ║            Functions for Machine Learning Evaluation                             ║
@@ -739,363 +740,37 @@ def tune_pipelines(
     progress_bar=False
 ) -> tuple:
     """
-    Perform hyperparameter tuning with grid/random search and optional validation curve plots.
+    Perform hyperparameter tuning with grid/random search and optional curves.
 
-    Parameters:
-    -----------
-    pipedict : dict
-        Dictionary of pipeline names and their corresponding pipeline objects
-    param_grid : dict
-        Dictionary of parameter grids for each pipeline
-    X_train, y_train : array-like
-        Training data
-    X_test, y_test : array-like
-        Test data
-    scoring : str, optional (default='accuracy')
-        Metric to optimize during search
-    search_method : str, optional (default='grid')
-        Search method: 'grid' for GridSearchCV, 'random' for RandomizedSearchCV
-    n_iter : int, optional (default=50)
-        Number of parameter combinations to try (only for random search)
-    n_splits : int, optional (default=5)
-        Number of splits for cross-validation
-    n_repeats : int, optional (default=3)
-        Number of times to repeat cross-validation
-    random_state : int, optional (default=42)
-        Seed for reproducibility
-    display : bool, optional (default=True)
-        Whether to display detailed results
-    n_jobs : int, optional (default=-1)
-        Number of CPU cores to use
-    plot_validation_curves : bool, optional (default=False)
-        Whether to plot validation curves (score vs hyperparameter value) for each parameter.
-        Note: This fits models separately from the main search and can be slow.
-    plot_learning_curves : bool, optional (default=True)
-        Whether to plot learning curves (score vs training set size) after hyperparameter tuning.
-        Uses the best estimator from the search to diagnose underfitting/overfitting and 
-        determine if more data would help. Shows training score vs validation score across
-        different training set sizes.
-    progress_bar : bool, optional (default=False)
-        Whether to display a progress bar for parameter evaluations
+    This adapter delegates to the shared ML tuning layer. See
+    ``utils._ml_common.tune_models`` for the full parameter documentation.
 
     Returns:
     --------
     tuple
         (dictionary of fitted search objects, list of fitting times)
-    
-    Example:
-    --------
-    >>> fitted_models, times = tune_pipelines(
-    >>>     pipedict={'rf': RandomForestClassifier()},
-    >>>     param_grid={'rf': {'n_estimators': [10, 50, 100]}},
-    >>>     X_train=X_train, y_train=y_train,
-    >>>     X_test=X_test, y_test=y_test,
-    >>>     search_method='random', n_iter=20
-    >>> )
     """
-    fitted_models = {}
-    fit_times = []
-
-    # Wrap pipeline iteration with optional tqdm
-    pipe_iter = tqdm(pipedict.items(), desc="Processing Pipelines",
-                    position=0, leave=True) if progress_bar else pipedict.items()
-
-    for name, pipeline in pipe_iter:
-        try:
-            # Plot validation curves if requested (shows score vs hyperparameter value)
-            if plot_validation_curves:
-                _plot_validation_curves(
-                    pipeline=pipeline,
-                    param_grid=param_grid[name],
-                    X_train=X_train,
-                    y_train=y_train,
-                    X_test=X_test,
-                    y_test=y_test,
-                    scoring=scoring,
-                    name=name,
-                    display=display,
-                    progress_bar=progress_bar
-                )
-
-            # Construct cross-validation strategy
-            cv = RepeatedStratifiedKFold(
-                n_splits=n_splits,
-                n_repeats=n_repeats,
-                random_state=random_state
-            )
-
-            # Choose search method
-            if search_method == 'random':
-                model = RandomizedSearchCV(
-                    estimator=pipeline,
-                    param_distributions=param_grid[name],
-                    n_iter=n_iter,
-                    scoring=scoring,
-                    cv=cv,
-                    verbose=2 if display else 0,
-                    n_jobs=n_jobs,
-                    random_state=random_state,
-                    return_train_score=True,
-                    error_score='raise'
-                )
-            else:  # grid search
-                model = GridSearchCV(
-                    estimator=pipeline,
-                    param_grid=param_grid[name],
-                    scoring=scoring,
-                    cv=cv,
-                    verbose=2 if display else 0,
-                    n_jobs=n_jobs,
-                    return_train_score=True,
-                    error_score='raise'
-                )
-
-            # Fit with timing
-            start_time = time.time()
-            model.fit(X_train, y_train)
-            fit_time = time.time() - start_time
-            fit_times.append(round(fit_time, 2))
-
-            # Store fitted model
-            fitted_models[name] = model
-
-            if display:
-                print(f"\n{'='*50}")
-                print(f"Results for {name} ({search_method.upper()} Search)")
-                print(f"{'='*50}")
-                print(f"Fit Time: {fit_time:.2f}s")
-                print(f"Best CV {scoring}: {model.best_score_:.4f}")
-                print("\nBest Parameters:")
-                for param, value in model.best_params_.items():
-                    print(f"  {param}: {value}")
-                
-                # Show test score with best estimator
-                if scoring == 'roc_auc':
-                    test_score = roc_auc_score(y_test, model.best_estimator_.predict_proba(X_test)[:, 1])
-                else:
-                    test_score = get_scorer(scoring)._score_func(y_test, model.best_estimator_.predict(X_test))
-                print(f"\nTest {scoring}: {test_score:.4f}")
-                
-                # Plot learning curves if requested
-                if plot_learning_curves:
-                    print(f"\nGenerating learning curves for {name}...")
-                    _plot_learning_curves(
-                        estimator=model.best_estimator_,
-                        X_train=X_train,
-                        y_train=y_train,
-                        scoring=scoring,
-                        name=name,
-                        n_splits=n_splits,
-                        n_repeats=n_repeats,
-                        random_state=random_state
-                    )
-
-        except Exception as e:
-            print(f"Error during {name} pipeline tuning: {str(e)}")
-            raise
-
-    return fitted_models, fit_times
-
-# Function for plotting validation curves
-def _plot_validation_curves(
-    pipeline,
-    param_grid: dict,
-    X_train,
-    y_train,
-    X_test,
-    y_test,
-    scoring: str,
-    name: str,
-    display: bool = True,
-    progress_bar: bool = False
-):
-    """
-    Plot validation curves showing score vs hyperparameter value for each parameter.
-    
-    This is an internal helper function used by tune_pipelines.
-    """
-    # Wrap param_grid iteration with optional tqdm
-    param_iter = tqdm(param_grid.items(), desc=f"Validation Curves for {name}",
-                    position=1, leave=True) if progress_bar else param_grid.items()
-
-    for param_name, param_values in param_iter:
-        if not isinstance(param_values, (list, np.ndarray)):
-            continue
-
-        # Skip parameters with too few values
-        if len(param_values) < 2:
-            continue
-
-        # Initialize score lists
-        train_scores = []
-        test_scores = []
-
-        if display:
-            print(f"\nValidation curve for {param_name}...")
-
-        for value in param_values:
-            # Create a copy of the pipeline with the current parameter value
-            current_pipeline = clone(pipeline)
-            current_pipeline.set_params(**{param_name: value})
-
-            # Fit and evaluate
-            current_pipeline.fit(X_train, y_train)
-
-            # Get predictions and scores
-            if scoring == 'roc_auc':
-                y_pred_train = current_pipeline.predict_proba(X_train)[:, 1]
-                y_pred_test = current_pipeline.predict_proba(X_test)[:, 1]
-                score_func = roc_auc_score
-            else:
-                y_pred_train = current_pipeline.predict(X_train)
-                y_pred_test = current_pipeline.predict(X_test)
-                score_func = get_scorer(scoring)._score_func
-
-            train_score = score_func(y_train, y_pred_train)
-            test_score = score_func(y_test, y_pred_test)
-
-            train_scores.append(train_score)
-            test_scores.append(test_score)
-
-            if display:
-                print(f'  {param_name}={value}: train={train_score:.3f}, test={test_score:.3f}')
-
-        # Plot validation curve
-        plt.figure(figsize=(10, 6))
-        plt.plot(param_values, train_scores, 'o-', label='Train', linewidth=2)
-        plt.plot(param_values, test_scores, 'o-', label='Test', linewidth=2)
-
-        # Find best parameter value
-        best_idx = np.argmax(test_scores)
-        best_value = param_values[best_idx]
-        best_score = test_scores[best_idx]
-
-        # Add vertical line and annotation for best value
-        plt.axvline(x=best_value, color='r', linestyle='--', alpha=0.5)
-        plt.annotate(
-            f'Best: {best_value}\nScore: {best_score:.3f}',
-            xy=(best_value, best_score),
-            xytext=(10, -30), textcoords='offset points',
-            bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.7),
-            arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0')
-        )
-
-        plt.title(f'Validation Curve: {name} | {param_name}')
-        plt.xlabel(param_name)
-        plt.ylabel(scoring.upper())
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
-        plt.show()
-
-# Function for plotting learning curves
-def _plot_learning_curves(
-    estimator,
-    X_train,
-    y_train,
-    scoring: str,
-    name: str,
-    n_splits: int = 5,
-    n_repeats: int = 3,
-    random_state: int = 42
-):
-    """
-    Plot learning curves showing training and validation scores vs training set size.
-    
-    This helps diagnose underfitting/overfitting and determine if more data would help.
-    Uses RepeatedStratifiedKFold for robust cross-validation.
-    
-    Parameters:
-    -----------
-    estimator : sklearn estimator
-        The fitted best estimator from hyperparameter tuning
-    X_train, y_train : array-like
-        Training data
-    scoring : str
-        Scoring metric to use
-    name : str
-        Model name for the plot title
-    n_splits : int, optional (default=5)
-        Number of CV splits
-    n_repeats : int, optional (default=3)
-        Number of CV repeats
-    random_state : int, optional (default=42)
-        Random seed for reproducibility
-    """
-    # Create CV strategy
-    cv = RepeatedStratifiedKFold(
+    return tune_models(
+        pipedict,
+        param_grid,
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        task=CLASSIFICATION_TASK,
+        scoring=scoring,
+        search_method=search_method,
+        n_iter=n_iter,
         n_splits=n_splits,
         n_repeats=n_repeats,
-        random_state=random_state
-    )
-    
-    # Define training set sizes (percentages of training data)
-    train_sizes = np.linspace(0.1, 1.0, 10)
-    
-    # Calculate learning curve
-    train_sizes_abs, train_scores, test_scores = learning_curve(
-        estimator=estimator,
-        X=X_train,
-        y=y_train,
-        train_sizes=train_sizes,
-        cv=cv,
-        scoring=scoring,
-        n_jobs=-1,
         random_state=random_state,
-        return_times=False
+        display=display,
+        n_jobs=n_jobs,
+        plot_validation_curves=plot_validation_curves,
+        plot_learning_curves=plot_learning_curves,
+        progress_bar=progress_bar,
     )
-    
-    # Calculate mean and std
-    train_scores_mean = np.mean(train_scores, axis=1)
-    train_scores_std = np.std(train_scores, axis=1)
-    test_scores_mean = np.mean(test_scores, axis=1)
-    test_scores_std = np.std(test_scores, axis=1)
-    
-    # Plot learning curve
-    fig, ax = plt.subplots(figsize=(12, 8))
-    
-    # Plot training scores
-    ax.plot(train_sizes_abs, train_scores_mean, 'o-', color='blue', 
-            label='Training Score', linewidth=2.5, markersize=8)
-    ax.fill_between(train_sizes_abs, train_scores_mean - train_scores_std,
-                    train_scores_mean + train_scores_std, alpha=0.2, color='blue')
-    
-    # Plot validation scores
-    ax.plot(train_sizes_abs, test_scores_mean, 'o-', color='darkorange',
-            label='Validation Score', linewidth=2.5, markersize=8)
-    ax.fill_between(train_sizes_abs, test_scores_mean - test_scores_std,
-                    test_scores_mean + test_scores_std, alpha=0.2, color='darkorange')
-    
-    # Add annotations for gap analysis
-    final_train = train_scores_mean[-1]
-    final_val = test_scores_mean[-1]
-    gap = final_train - final_val
-    
-    # Add text box with gap analysis
-    textstr = f'Final Gap: {gap:.3f}\n'
-    if gap < 0.01:
-        textstr += 'Status: Well-fitted ✓'
-    elif gap < 0.05:
-        textstr += 'Status: Slight overfitting'
-    else:
-        textstr += 'Status: High variance (overfitting)'
-    
-    if test_scores_mean[-1] - test_scores_mean[0] > 0.05:
-        textstr += '\nMore data may help'
-    
-    ax.text(0.02, 0.98, textstr, transform=ax.transAxes, fontsize=11,
-            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-    
-    # Configure plot
-    ax.set_xlabel('Training Set Size', fontsize=12)
-    ax.set_ylabel(f'{scoring.upper()} Score', fontsize=12)
-    ax.set_title(f'Learning Curves - {name}\n(Best Model After Hyperparameter Tuning)', 
-                fontsize=14)
-    ax.legend(loc='lower right', fontsize=11)
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
+
 
 # Define supported models
 SUPPORTED_MODELS = ['logisticregression', 'knn', 'decisiontree', 'randomforest', 'gb', 'xgboost']
