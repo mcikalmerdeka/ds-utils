@@ -12,6 +12,10 @@ from statsmodels.tsa.stattools import acf, adfuller, kpss, pacf
 # ║                       Functions for Time Series Analysis                         ║
 # ╚══════════════════════════════════════════════════════════════════════════════════╝
 
+_ALLOWED_RESAMPLE_AGGREGATIONS = frozenset(
+    {"mean", "sum", "min", "max", "median", "first", "last", "count", "std", "var"}
+)
+
 
 def _validate_series(series: pd.Series) -> pd.Series:
     """Validate that input is a non-empty pandas Series."""
@@ -28,16 +32,20 @@ def _infer_period(series: pd.Series) -> int:
     """Infer a reasonable seasonal period from a datetime index if possible."""
     if isinstance(series.index, pd.DatetimeIndex):
         freq = pd.infer_freq(series.index)
-        if freq in ("D", "B"):
-            return 7
-        if freq in ("W", "W-SUN", "W-MON", "W-TUE", "W-WED", "W-THU", "W-FRI", "W-SAT"):
-            return 52
-        if freq in ("M", "MS", "BM", "BMS"):
-            return 12
-        if freq in ("Q", "QS", "BQ", "BQS"):
-            return 4
-        if freq in ("H", "BH"):
-            return 24
+        if freq:
+            # Accept both legacy uppercase aliases and modern lowercase
+            # aliases (e.g. 'h', 'ME', 'QE-DEC'), including count prefixes.
+            normalized = freq.upper().lstrip("0123456789")
+            if normalized.startswith("W"):
+                return 52
+            if normalized.startswith("Q") or normalized.startswith("BQ"):
+                return 4
+            if normalized.startswith("M") or normalized.startswith("BM"):
+                return 12
+            if normalized in ("H", "BH"):
+                return 24
+            if normalized in ("D", "B"):
+                return 7
     return min(len(series) // 2, 12)
 
 
@@ -88,6 +96,11 @@ def decompose_series(
 
     if period is None:
         period = _infer_period(series)
+    if period < 2:
+        raise ValueError(
+            "period must be at least 2 for seasonal decomposition; "
+            f"got {period}."
+        )
 
     # Ensure strictly positive values for multiplicative decomposition
     if model == "multiplicative" and (series <= 0).any():
@@ -560,7 +573,9 @@ def evaluate_forecast(
     Returns
     -------
     Dict[str, float]
-        Dictionary with MAE, MSE, RMSE, MAPE, sMAPE, and MPE.
+        Dictionary with MAE, MSE, RMSE, MAPE, sMAPE, and MPE. MAPE is NaN
+        when any actual value is zero, because the percentage error is
+        undefined for those observations.
 
     Examples
     --------
@@ -577,10 +592,13 @@ def evaluate_forecast(
     mse = np.mean((y_true - y_pred) ** 2)
     rmse = np.sqrt(mse)
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
-        mape = np.nan_to_num(mape, nan=np.inf)
+    if np.any(y_true == 0):
+        mape = np.nan
+    else:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
+    with np.errstate(divide="ignore", invalid="ignore"):
         smape = np.mean(2 * np.abs(y_true - y_pred) / (np.abs(y_true) + np.abs(y_pred))) * 100
         smape = np.nan_to_num(smape, nan=0.0)
 
@@ -658,16 +676,20 @@ def detect_outliers_iqr(
     >>> outlier_mask = detect_outliers_iqr(df['sales'])
     >>> df.loc[outlier_mask]
     """
-    series = _validate_series(series).dropna()
+    series = _validate_series(series)
 
-    q1 = series.quantile(0.25)
-    q3 = series.quantile(0.75)
+    mask = pd.Series(False, index=series.index)
+    valid = series.dropna()
+
+    q1 = valid.quantile(0.25)
+    q3 = valid.quantile(0.75)
     iqr = q3 - q1
 
     lower_bound = q1 - k * iqr
     upper_bound = q3 + k * iqr
 
-    return (series < lower_bound) | (series > upper_bound)
+    mask.loc[valid.index] = (valid < lower_bound) | (valid > upper_bound)
+    return mask
 
 
 def interpolate_series(
@@ -720,8 +742,9 @@ def resample_series(
     rule : str
         Pandas offset string, e.g. 'D', 'W', 'M', 'Q', 'H'.
     aggregation : str, default='mean'
-        Aggregation method to apply after resampling. Must be a valid
-        pandas resampler method.
+        Aggregation method to apply after resampling. Must be one of
+        'mean', 'sum', 'min', 'max', 'median', 'first', 'last', 'count',
+        'std', or 'var'.
 
     Returns
     -------
@@ -737,10 +760,13 @@ def resample_series(
     if not isinstance(series.index, pd.DatetimeIndex):
         raise ValueError("Resampling requires a DatetimeIndex.")
 
-    resampler = series.resample(rule)
-    if not hasattr(resampler, aggregation):
-        raise ValueError(f"Invalid aggregation: '{aggregation}'")
+    if aggregation not in _ALLOWED_RESAMPLE_AGGREGATIONS:
+        allowed = ", ".join(sorted(_ALLOWED_RESAMPLE_AGGREGATIONS))
+        raise ValueError(
+            f"Invalid aggregation: '{aggregation}'. Supported aggregations: {allowed}."
+        )
 
+    resampler = series.resample(rule)
     return getattr(resampler, aggregation)()
 
 
