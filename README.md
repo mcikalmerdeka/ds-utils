@@ -1,189 +1,301 @@
-# Rapid EDA and Preprocessing Utility Scripts for Data Science Projects
+# Data Science Utils
 
-This repository contains a collection of utility scripts and functions designed to accelerate Exploratory Data Analysis (EDA), preprocessing, modeling, and reporting tasks in Data Science projects. These scripts are optimized for quick usage in environments like Kaggle kernels or local Jupyter notebooks. Initially this repository was created for personal use, but it can be useful for others as well.
+Reusable Python utilities for rapid exploratory data analysis, preprocessing, modeling, and reporting on tabular data.
 
-## 🚀 Features
+The distribution is `data-science-utils`; the import package is `utils`. Requires **Python 3.14+**.
 
-The scripts can be found in the `utils` folder. The available scripts are:
+## Highlights
 
-- `preprocessing.py`
-- `statistics.py`
-- `visualization.py`
-- `feature_selection.py`
-- `ab_testing.py`
-- `classification_evals_and_tuning.py`
-- `regression_evals_and_tuning.py`
-- `text_preprocessing.py`
-- `translation_utils.py`
-- `eda_report.py`
-- `time_series.py`
+- Tabular, notebook-friendly API built around pandas and scikit-learn.
+- One import surface: `from utils import ...` or `from utils import *`.
+- Consistent helpers for data quality, cleaning, feature engineering, feature selection, statistics, and visualization.
+- Classification and regression evaluation with repeated cross-validation, diagnostic plots, and optional headless operation.
+- Grid and random-search tuning with shared behavior across both task types.
+- Optional NLP, language-detection, and translation extras.
+- Self-contained HTML EDA reports.
 
-### 1. Data Inspection & Cleaning
+## Contents
 
-- **`check_data_information`**: Comprehensive summary of data types, null values, duplicates, unique samples, zeros, negatives, and cardinality.
-- **`handle_missing_values`**: Flexible imputation strategies including:
-  - Simple: Mean, Median, Mode
-  - Time-series: Forward fill, Backward fill
-  - Advanced: KNN Imputation
-- **`filter_outliers`**: Detect and filter outliers using IQR or Z-score methods, with detection-only mode.
-- **`drop_columns`**: Safely remove unwanted columns.
-- **`change_binary_dtype`**: Toggle binary columns between numerical (0/1) and categorical (No/Yes) formats.
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Feature overview](#feature-overview)
+- [Machine learning](#machine-learning)
+- [Project layout](#project-layout)
+- [Development](#development)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
 
-### 2. Feature Engineering
+## Installation
 
-- **`feature_scaling`**: Unified interface for multiple scaling methods:
-  - Standard Scaler
-  - MinMax Scaler
-  - Robust Scaler
-  - Power Transformer (Yeo-Johnson/Box-Cox)
-  - Quantile Transformer
-- **`feature_encoding`**: Wrapper for ordinal, one-hot, mean, binary, and frequency encoding with train/test-safe fitted encoders.
+Python **3.14** or newer is required.
 
-### 3. Feature Selection
-
-- **`calculate_correlation_tabular`**: Feature-feature and feature-target correlations in tabular form.
-- **`analyze_categorical_relationships`**: Chi-square test and Cramér's V for categorical associations.
-- **`calculate_vif`**: Variance Inflation Factor for multicollinearity detection.
-- **`calculate_feature_importance`**: Univariate feature importance for classification and regression.
-
-### 4. Statistical Analysis
-
-- **`describe_numerical_combined`**: Detailed stats including skewness, kurtosis, IQR, and CV, with optional grouping (hue).
-- **`describe_categorical_combined`**: Frequency analysis, top/bottom categories, and percentages.
-- **`describe_date_columns`**: Extract temporal patterns, seasonality, gaps, and ranges from datetime columns.
-- **`identify_distribution_types`**: Automatically categorize numerical features by skewness and kurtosis.
-
-### 5. Visualization
-
-- **`plot_dynamic_hisplots_kdeplots`**: Grid of histograms/KDEs with hue support.
-- **`plot_dynamic_boxplots_violinplots`**: Grid of box/violin plots for outlier detection.
-- **`plot_dynamic_countplot`**: Grid of count plots for categorical variables.
-- **`plot_correlation_heatmap`**: Pearson, Spearman, or Kendall correlation heatmaps.
-- **`plot_dynamic_stripplot_swarmplot`**: Strip/swarm plots for categorical vs numerical relationships.
-
-### 6. Machine Learning Evaluation & Tuning
-
-- **`eval_classification`** / **`eval_regression`**: Comprehensive model evaluation with CV metrics and diagnostic plots.
-- **`compare_cv_metrics`**: Compare CV metrics across multiple models in a single table.
-- **`tune_pipelines`** / **`tune_single_model`** / **`tune_all_models`**: Hyperparameter tuning with grid/random search, validation curves, and learning curves.
-- **`get_model_pipeline`** / **`get_hyperparameters`**: Pre-built pipelines and hyperparameter grids for common models.
-
-Supported classification models: Logistic Regression, KNN, Decision Tree, Random Forest, Gradient Boosting, XGBoost.
-Supported regression models: Linear Regression, Ridge, Lasso, ElasticNet, KNN, Decision Tree, Random Forest, Gradient Boosting, XGBoost.
-
-### 7. A/B Testing
-
-- **`calculate_sample_size`**: Required sample size for proportion or continuous metrics.
-- **`check_normality`**: Shapiro-Wilk normality test.
-- **`check_variance_homogeneity`**: Levene's test for equal variances.
-- **`perform_t_test`** / **`perform_mann_whitney_u_test`**: Parametric and non-parametric two-group tests.
-- **`perform_chi_squared_test`** / **`perform_z_test_proportions`**: Tests for conversion/proportion metrics.
-- **`analyze_ab_test_results`**: High-level A/B test analysis that auto-selects appropriate tests.
-
-### 8. Text Processing & Translation
-
-- **`TextPreprocessor`**: Comprehensive NLP preprocessing class with HTML/URL/email removal, normalization, tokenization, lemmatization, and stemming.
-- **`TextVisualizer`**: Word clouds and word-frequency visualizations.
-- **`quick_clean`**, **`extract_ngrams`**, **`get_text_stats`**: Convenience text utilities.
-- **`detect_language_rows`**, **`translate_series`**, **`translate_dataframe`**, **`run_translation_pipeline`**, **`translate_all_text`**: Language detection and translation utilities.
-
-> Text and translation features require optional dependencies. See the Installation section below.
-
-### 9. Automated Reporting
-
-- **`generate_eda_report`**: Generate a self-contained HTML EDA report with data quality, summaries, correlations, visualizations, and target analysis.
-
-### 10. Time Series Analysis
-
-- **`decompose_series`**: Trend/seasonal/residual decomposition.
-- **`adf_test`** / **`kpss_test`** / **`check_stationarity`**: Stationarity tests.
-- **`make_stationary`**: Auto-difference a series until stationary.
-- **`create_lag_features`** / **`create_rolling_features`** / **`create_date_features`**: Time-series feature engineering.
-- **`split_time_series`** / **`time_series_cv_splits`**: Chronological train/test split and walk-forward CV.
-- **`evaluate_forecast`**: Forecast accuracy metrics.
-- **`plot_acf_pacf`** / **`get_acf_pacf_values`**: ACF/PACF analysis.
-- **`detect_outliers_iqr`**, **`interpolate_series`**, **`resample_series`**: Outlier detection, interpolation, and resampling.
-
-## 📦 Installation
-
-The distribution is `data-science-utils`, and the import package is `utils`. This project uses `uv` for dependency management.
+### uv (recommended)
 
 ```bash
-# Install core dependencies
+# Core dependencies and the package itself
 uv sync
 
-# Install with text processing extras
+# Optional extras
 uv sync --extra text
-
-# Install with translation extras
 uv sync --extra translate
-
-# Install everything
 uv sync --extra all
 ```
 
-`uv sync` is the primary installation workflow, and `pyproject.toml` is the authoritative dependency source. `requirements.txt` mirrors the direct dependencies from `pyproject.toml` for pip users; keep both files in sync. `uv.lock` records the tested dependency set, while the floors in `pyproject.toml` state the minimum APIs the code relies on.
+`uv sync` is the primary workflow. `pyproject.toml` is the authoritative dependency source, and `uv.lock` records the tested dependency set.
+
+### pip
 
 ```bash
+# Dependencies only
 pip install -r requirements.txt
 
-# Optional extras with pip
+# Install the package and its dependencies
+pip install -e .
+
+# With optional extras
 pip install -e ".[text]"
+pip install -e ".[translate]"
+pip install -e ".[all]"
 ```
 
-## 🧪 Development & Tests
+`requirements.txt` mirrors the direct core dependencies in `pyproject.toml`; keep both in sync if you edit dependency metadata.
 
-The test suite uses `pytest` and a non-interactive matplotlib backend.
+### Optional extras
 
-```bash
-uv run pytest
+| Extra | Adds | Enables |
+|---|---|---|
+| `text` | `beautifulsoup4`, `contractions`, `nltk`, `Pillow`, `textblob`, `wordcloud` | `TextPreprocessor`, `TextVisualizer`, and text helpers |
+| `translate` | `deep-translator`, `langid`, `tenacity` | Language detection and translation utilities |
+| `all` | Both of the above | All optional text and translation features |
+
+Text features based on NLTK may also need corpora downloaded locally:
+
+```python
+import nltk
+
+nltk.download("stopwords")
+nltk.download("punkt")
+nltk.download("wordnet")
 ```
 
-Optional text/translation tests are skipped or monkeypatched unless the relevant extras are installed.
-
-## 🛠️ Usage
-
-You can import individual functions or use `from utils import *`:
+## Quick start
 
 ```python
 import pandas as pd
+
 from utils import (
     check_data_information,
-    handle_missing_values,
     feature_scaling,
     generate_eda_report,
+    handle_missing_values,
 )
 
-# Load your data
 df = pd.read_csv("your_dataset.csv")
 
-# 1. Check Data Info
+# Inspect data types, missing values, duplicates, and cardinality
 info = check_data_information(df, df.columns.tolist())
-print(info)
 
-# 2. Handle Missing Values
-df_clean, _ = handle_missing_values(df, columns=["age", "salary"], strategy="median")
+# Impute missing values and keep the fitted imputer
+df_clean, imputer = handle_missing_values(
+    df,
+    columns=["age", "salary"],
+    strategy="median",
+)
 
-# 3. Scale Features
-df_scaled, scaler = feature_scaling(df_clean, columns=["salary"], method="robust")
+# Scale features and keep the fitted scaler
+df_scaled, scaler = feature_scaling(
+    df_clean,
+    columns=["salary"],
+    method="robust",
+)
 
-# 4. Generate an EDA report
-html_report = generate_eda_report(df, target="target_column", output_path="eda_report.html")
+# Write a self-contained HTML report (the HTML is also returned)
+report_html = generate_eda_report(
+    df,
+    target="target_column",
+    output_path="eda_report.html",
+)
 ```
 
-## 🔮 Future Roadmap
+## Feature overview
 
-This project is actively evolving. Planned additions and improvements include:
+### Data inspection and cleaning
 
-- [x] **Advanced Feature Selection**: Correlation, VIF, univariate importance.
-- [x] **Model Evaluation Utils**: Classification/regression evaluation, CV comparison, ROC/PR curves, confusion matrices.
-- [x] **Time Series Analysis**: Decomposition, ADF/KPSS stationarity tests, lag/rolling features, ACF/PACF.
-- [x] **Text Processing**: Text cleaning, tokenization, lemmatization, stemming, word clouds, n-grams.
-- [x] **Automated Reporting**: HTML EDA report generator.
-- [ ] **Model Persistence**: Utilities to save/load preprocessing + model artifacts.
-- [ ] **Imbalanced Classification Helpers**: Class-balance checks and resampling wrappers.
-- [ ] **Pipeline Orchestrator**: Unified AutoML-style entry point for end-to-end workflows.
+- **`check_data_information`** — data types, null values, duplicates, unique samples, zero and negative values, empty strings, and cardinality.
+- **`handle_missing_values`** — mean, median, mode, forward fill, backward fill, and KNN imputation. Returns the cleaned frame and fitted imputer.
+- **`filter_outliers`** — IQR or Z-score filtering, with detection-only and mask-return modes.
+- **`drop_columns`** — safely remove one or more columns.
+- **`change_binary_dtype`** — toggle binary columns between numeric `0/1` and categorical `No/Yes` representations.
 
-## 🤝 Contributing
+### Feature engineering
 
-Feel free to fork this repository and submit pull requests if you have useful scripts to share!
+- **`feature_scaling`** — standard, min-max, robust, power transform (Yeo-Johnson or Box-Cox), and quantile scaling. Returns the transformed frame and fitted scaler.
+- **`feature_encoding`** — ordinal, one-hot, mean, binary, and frequency encoding with fitted encoders for train/test consistency and configurable unknown-value handling.
+
+### Feature selection and statistics
+
+- **`calculate_correlation_tabular`** — feature-feature or feature-target correlations in tabular form.
+- **`analyze_categorical_relationships`** — chi-square tests and Cramér's V for categorical associations.
+- **`calculate_vif`** — variance inflation factor for multicollinearity detection.
+- **`calculate_feature_importance`** — univariate feature importance for classification and regression.
+- **`describe_numerical_combined`** — descriptive statistics including skewness, kurtosis, IQR, and coefficient of variation, with optional grouping.
+- **`describe_categorical_combined`** — frequency analysis, top and bottom categories, and percentages.
+- **`describe_date_columns`** — temporal patterns, seasonality, gaps, and ranges.
+- **`identify_distribution_types`** — classify numerical features by skewness and kurtosis.
+
+### Visualization
+
+- **`plot_dynamic_hisplots_kdeplots`** — histogram and KDE grids with hue support.
+- **`plot_dynamic_boxplots_violinplots`** — box and violin grids for distribution and outlier inspection.
+- **`plot_dynamic_countplot`** — count plots for categorical variables.
+- **`plot_dynamic_stripplot_swarmplot`** — strip and swarm plots for categorical versus numerical relationships.
+- **`plot_correlation_heatmap`** — Pearson, Spearman, or Kendall correlation heatmaps.
+
+### A/B testing
+
+- **`calculate_sample_size`** — required sample size for proportion or continuous metrics.
+- **`check_normality`** — Shapiro-Wilk normality test.
+- **`check_variance_homogeneity`** — Levene's test for equal variances.
+- **`perform_t_test`** and **`perform_mann_whitney_u_test`** — parametric and non-parametric two-group tests.
+- **`perform_chi_squared_test`** and **`perform_z_test_proportions`** — tests for conversion and proportion metrics.
+- **`analyze_ab_test_results`** — high-level analysis that selects appropriate tests and reports effect sizes.
+
+### Text processing and translation
+
+Requires the `text` or `translate` extras; see [Installation](#installation).
+
+- **`TextPreprocessor`** — HTML, URL, and email removal; normalization; tokenization; lemmatization; and stemming.
+- **`TextVisualizer`** — word clouds and word-frequency visualizations.
+- **`quick_clean`**, **`extract_ngrams`**, **`get_text_stats`** — convenience text utilities.
+- **`detect_language_rows`** — language detection with target-language filtering.
+- **`translate_series`**, **`translate_dataframe`**, **`run_translation_pipeline`**, **`translate_all_text`** — translation helpers for series and DataFrames.
+
+### Automated reporting
+
+- **`generate_eda_report`** — self-contained HTML report with data quality, summaries, correlations, visualizations, and optional target analysis.
+
+### Time series
+
+- **`decompose_series`** — trend, seasonal, and residual decomposition.
+- **`adf_test`**, **`kpss_test`**, **`check_stationarity`** — stationarity tests.
+- **`make_stationary`** — automatic differencing until stationarity.
+- **`create_lag_features`**, **`create_rolling_features`**, **`create_date_features`** — time-series feature engineering.
+- **`split_time_series`**, **`time_series_cv_splits`** — chronological train/test splits and walk-forward cross-validation.
+- **`evaluate_forecast`** — forecast accuracy metrics.
+- **`plot_acf_pacf`**, **`get_acf_pacf_values`** — ACF and PACF analysis.
+- **`detect_outliers_iqr`**, **`interpolate_series`**, **`resample_series`** — outlier detection, interpolation, and resampling.
+
+## Machine learning
+
+Classification and regression helpers share the same repeated cross-validation evaluation and tuning core.
+
+### Evaluation
+
+- **`eval_classification`** — test-set metrics, repeated cross-validated metrics, confusion matrix, ROC, precision-recall, calibration, and threshold analysis. Requires a model with `predict_proba`.
+- **`eval_regression`** — test-set metrics, repeated cross-validated metrics, predicted-versus-actual plots, and residual diagnostics.
+- **`compare_cv_metrics`** — compare several models in one table. Results are formatted strings by default; pass `as_numeric=True` for numeric values.
+- **`return_figures=True`** on `eval_classification` adds the generated figures to the returned dictionary.
+- **`show_plots=False`** prevents `plt.show`; **`display=False`** suppresses the logged metric summary.
+
+```python
+from sklearn.model_selection import train_test_split
+
+from utils import eval_classification, get_model_pipeline
+
+# X and y are your feature matrix and target
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y,
+)
+
+model = get_model_pipeline("randomforest")
+model.fit(X_train, y_train)
+
+metrics = eval_classification(
+    model=model,
+    X_test=X_test,
+    y_test=y_test,
+    X_train=X_train,
+    y_train=y_train,
+    show_plots=False,
+    display=False,
+)
+```
+
+### Tuning
+
+- **`tune_pipelines`** — tune a dictionary of pipelines against parameter grids.
+- **`tune_single_model`** — build and tune one of the supported pipelines by name.
+- **`tune_all_models`** — tune every supported model for the task.
+- **`get_model_pipeline`** and **`get_hyperparameters`** — build pipelines and retrieve default search spaces.
+
+Tuning helpers return `(fitted_models, fit_times)` and support `display=False` and `show=False` for headless use.
+
+```python
+from utils import tune_single_model
+
+models, fit_times = tune_single_model(
+    "randomforest",
+    X_train,
+    y_train,
+    X_test,
+    y_test,
+    search_method="random",
+    n_iter=20,
+    display=False,
+    show=False,
+)
+```
+
+### Supported models
+
+| Task | Model keys |
+|---|---|
+| Classification | `logisticregression`, `knn`, `decisiontree`, `randomforest`, `gb`, `xgboost` |
+| Regression | `linearregression`, `ridge`, `lasso`, `elasticnet`, `knn`, `decisiontree`, `randomforest`, `gb`, `xgboost` |
+
+## Project layout
+
+```text
+utils/                         Flat import package
+  preprocessing.py
+  statistics.py
+  visualization.py
+  feature_selection.py
+  ab_testing.py
+  classification_evals_and_tuning.py
+  regression_evals_and_tuning.py
+  text_preprocessing.py
+  translation_utils.py
+  eda_report.py
+  time_series.py
+  _ml_common.py                Shared evaluation/tuning core (internal)
+  _plotting.py                 Shared figure finalization (internal)
+tests/                         pytest suite
+docs/                          Plans and guides
+notebooks/                     Example notebooks
+```
+
+## Development
+
+```bash
+uv sync
+uv run pytest
+```
+
+The test suite uses pytest and the non-interactive matplotlib `Agg` backend, so it does not open windows. Optional text and translation tests skip or monkeypatch missing dependencies.
+
+## Roadmap
+
+Core EDA, preprocessing, model evaluation and tuning, A/B testing, time series, text and translation, and automated reporting are implemented. Planned additions:
+
+- Model persistence for preprocessing and model artifacts.
+- Imbalanced-classification helpers and resampling wrappers.
+- A unified pipeline orchestrator for end-to-end workflows.
+
+## Contributing
+
+Fork the repository, create a feature branch, run the full test suite, and open a pull request with a clear description of the change.
