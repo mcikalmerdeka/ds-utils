@@ -205,11 +205,7 @@ def _is_obviously_english(text: str) -> bool:
         # If >30% of words are common English words, likely English
         if english_word_count / len(words) > 0.3:
             return True
-        
-        # If text is short (< 5 words) and all ASCII, assume English
-        if len(words) < 5:
-            return True
-    
+
     return False
 
 
@@ -244,8 +240,9 @@ def _is_target_language(
     if not isinstance(text, str) or not text.strip():
         return False
 
-    # Stage 0: Fast English filter - skip ML for obviously English text
-    if _is_obviously_english(text):
+    # Stage 0: Fast English filter. Only use it in "all non-English" mode;
+    # explicit target sets must go through detection even for short ASCII text.
+    if not target_langs and _is_obviously_english(text):
         return False
 
     # Stage 1: Unicode fast path — if target script characters are present, done
@@ -256,7 +253,11 @@ def _is_target_language(
     # Stage 2: ML detection
     try:
         lang, confidence = identifier.classify(text)
-        return lang in target_langs and confidence >= confidence_threshold
+        if confidence < confidence_threshold:
+            return False
+        if target_langs:
+            return lang in target_langs
+        return lang != "en"
     except Exception:
         return False
 
@@ -422,7 +423,7 @@ def detect_language_rows(
     print(f"Found {total_unique:,} unique texts to check")
     
     if total_unique == 0:
-        return df, df.iloc[0:0]
+        return df.iloc[0:0], df
 
     # Prepare data for detection
     text_list = list(all_texts)
