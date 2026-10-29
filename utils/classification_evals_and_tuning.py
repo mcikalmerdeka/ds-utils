@@ -268,7 +268,7 @@ def eval_classification(
             )
 
         logger.info("\nSingle Run Metrics:")
-        for metric in metric_funcs:
+        for metric in [*metric_funcs, "roc_auc"]:
             logger.info("\n%s:", metric.upper())
             logger.info("  Test:  %.2f", metrics[metric]["test"] * 100)
             logger.info("  Train: %.2f", metrics[metric]["train"] * 100)

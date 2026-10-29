@@ -68,6 +68,37 @@ def test_eval_logs_metric_summary_at_info(caplog):
     assert "accuracy" in caplog.text.lower()
 
 
+def test_eval_logs_single_run_roc_auc(caplog):
+    X_train, X_test, y_train, y_test = _split_dataset()
+    model = LogisticRegression(max_iter=1000).fit(X_train, y_train)
+
+    with caplog.at_level(logging.INFO):
+        eval_classification(
+            model=model,
+            X_test=X_test,
+            y_test=y_test,
+            X_train=X_train,
+            y_train=y_train,
+            plot_confusion_matrix=False,
+            plot_roc_curve=False,
+            plot_pr_curve=False,
+            plot_calibration_curve=False,
+            plot_threshold_analysis=False,
+            n_splits=2,
+            n_repeats=1,
+        )
+
+    messages = [record.getMessage() for record in caplog.records]
+    single_run_start = next(
+        index
+        for index, message in enumerate(messages)
+        if "Single Run Metrics" in message
+    )
+    single_run_output = "\n".join(messages[single_run_start:])
+
+    assert "ROC_AUC" in single_run_output
+
+
 def test_tuning_errors_are_logged_and_raised(caplog):
     X_train, X_test, y_train, y_test = _split_dataset()
     pipeline = Pipeline([("clf", LogisticRegression(max_iter=1000))])
