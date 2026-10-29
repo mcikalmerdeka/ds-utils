@@ -122,10 +122,13 @@ uv sync --extra translate
 uv sync --extra all
 ```
 
-Alternatively, you can use `pip` with the provided `requirements.txt`:
+`uv sync` is the primary installation workflow, and `pyproject.toml` is the authoritative dependency source. `requirements.txt` is generated from it with `uv export` for pip users; do not edit it manually.
 
 ```bash
 pip install -r requirements.txt
+
+# Optional extras with pip
+pip install -e ".[text]"
 ```
 
 ## 🧪 Development & Tests

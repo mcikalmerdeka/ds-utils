@@ -1,6 +1,8 @@
 import tomllib
 from pathlib import Path
 
+from packaging.version import Version
+
 
 def _project_metadata():
     return tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
@@ -45,3 +47,15 @@ def test_project_identity_is_unchanged():
 
     assert project["name"] == "data-science-utils"
     assert project["requires-python"] == ">=3.14"
+
+
+def test_requirements_txt_is_generated_from_pyproject():
+    lines = Path("requirements.txt").read_text(encoding="utf-8").splitlines()
+
+    assert "generated" in lines[0].lower()
+    assert "pyproject.toml" in lines[0]
+
+    scikit_learn = [line for line in lines if line.startswith("scikit-learn==")]
+    assert len(scikit_learn) == 1
+    pinned_version = scikit_learn[0].split("==", 1)[1].split(";", 1)[0].strip()
+    assert Version(pinned_version) >= Version("1.6")
