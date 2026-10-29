@@ -128,6 +128,16 @@ Alternatively, you can use `pip` with the provided `requirements.txt`:
 pip install -r requirements.txt
 ```
 
+## 🧪 Development & Tests
+
+The test suite uses `pytest` and a non-interactive matplotlib backend.
+
+```bash
+uv run pytest
+```
+
+Optional text/translation tests are skipped or monkeypatched unless the relevant extras are installed.
+
 ## 🛠️ Usage
 
 You can import individual functions or use `from utils import *`:

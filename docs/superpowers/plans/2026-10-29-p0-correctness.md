@@ -51,7 +51,7 @@ These are the inputs most likely to break a real user and are explicitly tested 
 - Consumes: existing `utils` modules.
 - Produces: `pytest` runnable from the repository root; `Agg` backend; small assertion-based smoke tests.
 
-- [ ] **Step 1: Add pytest to the project**
+- [x] **Step 1: Add pytest to the project**
 
 Run:
 
@@ -61,7 +61,7 @@ uv add --dev pytest
 
 Expected: `pyproject.toml` and `uv.lock` update with a dev dependency group; `.python-version` remains `3.14`.
 
-- [ ] **Step 2: Add pytest configuration**
+- [x] **Step 2: Add pytest configuration**
 
 In `pyproject.toml`, add:
 
@@ -72,7 +72,7 @@ pythonpath = ["."]
 addopts = "-ra"
 ```
 
-- [ ] **Step 3: Add test fixtures and Agg backend**
+- [x] **Step 3: Add test fixtures and Agg backend**
 
 Create `tests/conftest.py`:
 
@@ -83,7 +83,7 @@ matplotlib.use("Agg")
 
 Add a fixture that returns a small mixed dataframe with numeric, categorical, missing, and text columns.
 
-- [ ] **Step 4: Replace the three smoke scripts with assertions**
+- [x] **Step 4: Replace the three smoke scripts with assertions**
 
 `tests/test_eval_classification.py` must build a tiny binary dataset, call `eval_classification` with every plot flag disabled, `n_splits=2`, `n_repeats=1`, and assert:
 
@@ -100,17 +100,17 @@ Add a fixture that returns a small mixed dataframe with numeric, categorical, mi
 - `perform_chi_squared_test(100, 1000, 130, 1000)["significant"] is True`
 - `analyze_ab_test_results` returns `sample_size_a`, `sample_size_b`, and `p_value`
 
-- [ ] **Step 5: Add smoke import test**
+- [x] **Step 5: Add smoke import test**
 
 Create `tests/test_smoke.py` asserting `import utils` succeeds and `callable(utils.check_data_information)`.
 
-- [ ] **Step 6: Run the suite**
+- [x] **Step 6: Run the suite**
 
 Run: `uv run pytest -q`
 
 Expected: all tests pass. If any fail, fix the test or the existing behavior before moving on.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add pyproject.toml uv.lock tests
@@ -129,17 +129,17 @@ git commit -m "test: add pytest harness and baseline utility tests"
 - Consumes: `plot_dynamic_hisplots_kdeplots`, `plot_dynamic_boxplots_violinplots`, `plot_dynamic_countplot`, `plot_dynamic_stripplot_swarmplot`.
 - Produces: a private `_flatten_axes(ax)` helper; every grid function accepts one column with the default `ncols`/`n_cols`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Parameterize the four plot functions with one column and assert they do not raise. Also assert an empty `col_series` raises `ValueError`.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_visualization.py -q`
 
 Expected: the single-column cases fail with `AttributeError: 'numpy.ndarray' object has no attribute 'xaxis'`.
 
-- [ ] **Step 3: Implement the shared axis helper**
+- [x] **Step 3: Implement the shared axis helper**
 
 In `utils/visualization.py` add:
 
@@ -152,13 +152,13 @@ def _flatten_axes(ax):
 
 Use it in all four grid functions instead of the current `np.array([ax])` / `ax.flatten()` branch. Add a non-empty `col_series` validation at the start of each function.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `uv run pytest tests/test_visualization.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add utils/visualization.py tests/test_visualization.py
@@ -179,7 +179,7 @@ git commit -m "fix: support single-column plot grids"
 - Consumes: `describe_numerical_combined`, `describe_categorical_combined`, `describe_date_columns`, `generate_eda_report`.
 - Produces: numeric summaries for any numeric dtype; date parsing for object strings; safe categorical statistics for empty hue groups; EDA report support for `float32` and one numeric feature.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Tests must cover:
 
@@ -189,13 +189,13 @@ Tests must cover:
 - `generate_eda_report` on two `float32` columns returns HTML containing `"Numerical Summary"`.
 - `generate_eda_report` with one numeric feature and a numeric target includes the feature-target correlation table, not the “No target column provided” message.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_statistics.py tests/test_eda_report.py -q`
 
 Expected: failures for the `float32` length mismatch, the object-date `KeyError: 'max'`, the empty hue `idxmin`, and the EDA report dtype failure.
 
-- [ ] **Step 3: Fix numeric summaries**
+- [x] **Step 3: Fix numeric summaries**
 
 Compute skewness and kurtosis per requested column directly:
 
@@ -207,21 +207,21 @@ kurtosis(values) if len(values) > 1 else np.nan
 
 Apply the same helper to hue/class summaries.
 
-- [ ] **Step 4: Fix date and categorical summaries**
+- [x] **Step 4: Fix date and categorical summaries**
 
 In `describe_date_columns`, parse each requested column with `pd.to_datetime` before `describe()`; raise `ValueError` naming the column if parsing fails. In `describe_categorical_combined`, use a helper that handles an empty `value_counts()` and skip NaN hue classes.
 
-- [ ] **Step 5: Fix EDA target correlation and float dtype support**
+- [x] **Step 5: Fix EDA target correlation and float dtype support**
 
 Move the feature-target correlation block outside the `len(numeric_features) >= 2` condition, while keeping the heatmap conditional on at least two numeric features. The float32 failure should disappear once the statistics helper is fixed.
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run: `uv run pytest tests/test_statistics.py tests/test_eda_report.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add utils/statistics.py utils/eda_report.py tests/test_statistics.py tests/test_eda_report.py
@@ -240,7 +240,7 @@ git commit -m "fix: make summaries and EDA reports dtype-safe"
 - Consumes: `feature_encoding`.
 - Produces: unlisted object columns preserved; unknown binary categories raise by default; `handle_unknown="ignore"` explicitly maps unknown binaries to 0; unsupported one-hot `use_encoded_value` raises a clear error.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Tests must cover:
 
@@ -249,27 +249,27 @@ Tests must cover:
 - The same transform with `handle_unknown="ignore"` maps the unknown value to 0.
 - `nominal_columns=["cat"]` with `handle_unknown="use_encoded_value"` raises `ValueError` explaining that one-hot does not support that policy.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_preprocessing_encoding.py -q`
 
 Expected: the free-text column becomes `NaN`; unknown binary silently becomes 0; the one-hot policy either fails later or behaves inconsistently.
 
-- [ ] **Step 3: Preserve passthrough object columns**
+- [x] **Step 3: Preserve passthrough object columns**
 
 Only run `pd.to_numeric` on columns produced by ordinal/one-hot encoding. Do not convert `passthrough_cols` or unrelated object columns.
 
-- [ ] **Step 4: Validate unknown-category behavior**
+- [x] **Step 4: Validate unknown-category behavior**
 
 At transform time, detect values outside the fitted binary mapping. If `handle_unknown == "error"`, raise `ValueError` listing the values. If `"ignore"`, map them to 0 and emit a warning. At fit time, reject `handle_unknown="use_encoded_value"` when `nominal_columns` is non-empty; the one-hot encoder cannot represent that policy.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `uv run pytest tests/test_preprocessing_encoding.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add utils/preprocessing.py tests/test_preprocessing_encoding.py
@@ -288,7 +288,7 @@ git commit -m "fix: preserve encoding passthrough columns and validate unknowns"
 - Consumes: `filter_outliers`, `handle_missing_values`, `feature_scaling`, `check_data_information`.
 - Produces: NaN rows are not outliers; detection reports a truthful `Outlier Exist`; categorical median/mean has an actionable error; `ffill`/`bfill` use modern pandas; negative log transforms are rejected; empty dataframes return an empty info table.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Tests must cover:
 
@@ -300,13 +300,13 @@ Tests must cover:
 - `feature_scaling(..., apply_log=True)` with a negative value raises `ValueError`.
 - `check_data_information` on an empty frame returns a DataFrame with the documented columns.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_preprocessing_guards.py -q`
 
 Expected: NaN rows are filtered as outliers, `Outlier Exist` is false for the zero outlier, categorical median raises `TypeError`, ffill emits a deprecation warning, negative log raises a sklearn error, and empty info raises `ZeroDivisionError`.
 
-- [ ] **Step 3: Fix outlier masks**
+- [x] **Step 3: Fix outlier masks**
 
 Treat missing values as non-outliers:
 
@@ -320,17 +320,17 @@ For z-scores, compute z only on non-null values. Change the detection flag to:
 bool(((~filter_outlier) & series.notna()).any())
 ```
 
-- [ ] **Step 4: Fix missing values and scaling**
+- [x] **Step 4: Fix missing values and scaling**
 
 Validate strategies up front. For `median`/`mean`, raise `ValueError` for non-numeric selected columns. Replace `fillna(method=strategy)` with `.ffill()`/`.bfill()`. Add a shared `_apply_log1p` helper that raises `ValueError` for negative values and use it in both scaling modes. Add the empty-frame return to `check_data_information`.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `uv run pytest tests/test_preprocessing_guards.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add utils/preprocessing.py tests/test_preprocessing_guards.py
@@ -350,7 +350,7 @@ git commit -m "fix: guard outlier filtering, imputation, scaling, and empty fram
 - Consumes: `TextPreprocessor.remove_urls`, `process_text`, `_is_target_language`, `detect_language_rows`.
 - Produces: URL removal that preserves decimals/money/IPs; email removal that does not leave half an address; `target_langs=None` detecting non-English; short non-English ASCII text detected when a target language is requested.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Tests must cover:
 
@@ -362,31 +362,31 @@ Tests must cover:
 - `_is_target_language("Hello world", set(), dummy_en)` returns `False`.
 - `detect_language_rows` with `target_langs=None` and a monkeypatched identifier splits Spanish from English.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_text_language.py -q`
 
 Expected: decimals/money/IPs are removed, `test@` remains, short Spanish is treated as English, and `target_langs=None` detects nothing.
 
-- [ ] **Step 3: Fix URL removal**
+- [x] **Step 3: Fix URL removal**
 
 Replace the current overly broad regex with a scheme/`www.` alternative plus a domain alternative requiring a letter-based TLD and not preceded by `@` or a word character. Keep real URLs working. Remove emails before URLs in `process_text` so an email is never partially consumed.
 
-- [ ] **Step 4: Fix language detection**
+- [x] **Step 4: Fix language detection**
 
 Remove the “fewer than five ASCII words means English” shortcut. In `_is_target_language`, use the English fast path only when the caller has not supplied explicit target languages. For an empty target set, return `lang != "en"`; for a non-empty set, return `lang in target_langs`. Validate confidence for both branches.
 
-- [ ] **Step 5: Fix the empty-text split**
+- [x] **Step 5: Fix the empty-text split**
 
 When `total_unique == 0`, return `df.iloc[0:0]` as the target frame and the original `df` as the other frame.
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run: `uv run pytest tests/test_text_language.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add utils/text_preprocessing.py utils/translation_utils.py tests/test_text_language.py
@@ -407,7 +407,7 @@ git commit -m "fix: correct URL cleaning and non-English detection"
 - Consumes: `utils` package exports; `eval_classification`.
 - Produces: unsuffixed regression tuning aliases and strip/swarm plot export; binary-only guard and `predict_proba` guard with actionable messages.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 `tests/test_public_api.py` must assert these are importable from `utils`:
 
@@ -417,13 +417,13 @@ Also assert every name in `utils.__all__` resolves with `getattr`.
 
 `tests/test_classification_guard.py` must build a three-class dataset and assert `eval_classification` raises `ValueError` matching `"binary classification"` before fitting the CV. It must also assert a model without `predict_proba` raises a clear `ValueError`.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_public_api.py tests/test_classification_guard.py -q`
 
 Expected: the imports fail; multiclass raises the sklearn `average='binary'` error; a no-proba model raises `AttributeError`.
 
-- [ ] **Step 3: Add exports and aliases**
+- [x] **Step 3: Add exports and aliases**
 
 Import `plot_dynamic_stripplot_swarmplot` and add the unsuffixed regression aliases:
 
@@ -438,17 +438,17 @@ get_hyperparameters = get_hyperparameters_regression
 
 Add all aliases to `__all__`. Keep the classification-specific suffixed names unchanged.
 
-- [ ] **Step 4: Add the classification guards**
+- [x] **Step 4: Add the classification guards**
 
 After converting `y_train`/`y_test` to arrays, reject more than two classes with a message naming `eval_classification` and `binary classification`. Immediately check `hasattr(model, "predict_proba")` and raise a clear `ValueError` if absent. Do this before the first `predict_proba` call.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `uv run pytest tests/test_public_api.py tests/test_classification_guard.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add utils/__init__.py utils/classification_evals_and_tuning.py tests/test_public_api.py tests/test_classification_guard.py
@@ -467,13 +467,13 @@ git commit -m "fix: align public exports and guard classification evaluation"
 - Consumes: all prior tasks.
 - Produces: green full suite and a reviewable branch.
 
-- [ ] **Step 1: Run the full suite**
+- [x] **Step 1: Run the full suite**
 
 Run: `uv run pytest -q`
 
 Expected: PASS, no warnings promoted to errors.
 
-- [ ] **Step 2: Run a clean import and a minimal end-to-end check**
+- [x] **Step 2: Run a clean import and a minimal end-to-end check**
 
 Run:
 
@@ -484,11 +484,11 @@ uv run python -c "from utils import generate_eda_report; import pandas as pd; pr
 
 Expected: imports succeed; the EDA report returns an HTML string.
 
-- [ ] **Step 3: Update the plan checkboxes**
+- [x] **Step 3: Update the plan checkboxes**
 
 Mark all completed steps and record any rulings in the ledger at `.superpowers/sdd/2026-10-29-p0-correctness/progress.md`.
 
-- [ ] **Step 4: Commit final docs/tests**
+- [x] **Step 4: Commit final docs/tests**
 
 ```bash
 git add README.md docs tests
