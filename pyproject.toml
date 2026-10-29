@@ -5,32 +5,32 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "category-encoders",
+    "category-encoders>=2.6",
     "ipykernel",
-    "matplotlib",
-    "numpy",
-    "pandas",
-    "scikit-learn",
-    "scipy",
-    "seaborn",
-    "statsmodels",
-    "tqdm",
-    "xgboost",
+    "matplotlib>=3.8",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "scikit-learn>=1.6",
+    "scipy>=1.11",
+    "seaborn>=0.13",
+    "statsmodels>=0.14",
+    "tqdm>=4.66",
+    "xgboost>=2.0",
 ]
 
 [project.optional-dependencies]
 text = [
-    "beautifulsoup4",
-    "contractions",
-    "nltk",
-    "Pillow",
-    "textblob",
-    "wordcloud",
+    "beautifulsoup4>=4.12",
+    "contractions>=0.1",
+    "nltk>=3.9",
+    "Pillow>=10",
+    "textblob>=0.18",
+    "wordcloud>=1.9",
 ]
 translate = [
-    "deep-translator",
-    "langid",
-    "tenacity",
+    "deep-translator>=1.11",
+    "langid>=1.1.6",
+    "tenacity>=8.2",
 ]
 all = [
     "data-science-utils[text]",
