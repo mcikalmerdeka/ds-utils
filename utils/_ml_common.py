@@ -10,6 +10,7 @@ from typing import Callable, Mapping, Sequence
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy import sparse
 from sklearn.base import clone
 from sklearn.metrics import get_scorer
 from sklearn.model_selection import (
@@ -56,6 +57,8 @@ class FoldResult:
 def _to_numpy(values):
     if isinstance(values, (pd.DataFrame, pd.Series)):
         return values.to_numpy()
+    if sparse.issparse(values):
+        return values
     return np.asarray(values)
 
 

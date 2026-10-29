@@ -74,6 +74,21 @@ def test_collect_fold_results_returns_expected_shapes():
         assert np.array_equal(result.y_train_true, y[result.train_index])
 
 
+def test_collect_fold_results_supports_sparse_features():
+    from scipy.sparse import csr_matrix
+
+    X, y = _dataset()
+    cv = RepeatedStratifiedKFold(n_splits=2, n_repeats=1, random_state=0)
+
+    results = collect_fold_results(
+        LogisticRegression(max_iter=1000), csr_matrix(X), y, cv
+    )
+
+    assert len(results) == 2
+    for result in results:
+        assert result.y_proba.shape == (len(result.y_true), 2)
+
+
 def test_aggregate_fold_metrics_matches_manual_sklearn():
     X, y = _dataset()
     cv = RepeatedStratifiedKFold(n_splits=3, n_repeats=1, random_state=7)
