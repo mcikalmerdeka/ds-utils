@@ -11,3 +11,6 @@ wheels/
 
 # Credentials
 .env
+
+# Superpowers working artifacts
+.superpowers/
