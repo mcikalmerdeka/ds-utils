@@ -143,6 +143,19 @@ def eval_classification(
         X_train = to_numpy(X_train)
         y_train = to_numpy(y_train)
 
+        if not hasattr(model, "predict_proba"):
+            raise ValueError(
+                "eval_classification requires a model with predict_proba "
+                "(needed for ROC AUC and probability-based diagnostics)."
+            )
+
+        classes = np.unique(np.concatenate([np.asarray(y_train), np.asarray(y_test)]))
+        if len(classes) > 2:
+            raise ValueError(
+                "eval_classification currently supports binary classification "
+                f"only; found {len(classes)} classes."
+            )
+
         # Initialize metrics dictionary to store all evaluation results
         metrics = {}
 

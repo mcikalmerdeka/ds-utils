@@ -29,6 +29,7 @@ from .visualization import (
     plot_dynamic_hisplots_kdeplots,
     plot_dynamic_boxplots_violinplots,
     plot_dynamic_countplot,
+    plot_dynamic_stripplot_swarmplot,
     plot_correlation_heatmap
 )
 
@@ -42,6 +43,14 @@ from .regression_evals_and_tuning import (
     get_model_pipeline as get_model_pipeline_regression,
     get_hyperparameters as get_hyperparameters_regression
 )
+
+# Backwards-compatible unsuffixed aliases used by the README and notebooks.
+compare_cv_metrics = compare_cv_metrics_regression
+tune_pipelines = tune_pipelines_regression
+tune_single_model = tune_single_model_regression
+tune_all_models = tune_all_models_regression
+get_model_pipeline = get_model_pipeline_regression
+get_hyperparameters = get_hyperparameters_regression
 
 # ML classification functions
 from .classification_evals_and_tuning import (
@@ -134,10 +143,17 @@ __all__ = [
     'plot_dynamic_hisplots_kdeplots',
     'plot_dynamic_boxplots_violinplots',
     'plot_dynamic_countplot',
+    'plot_dynamic_stripplot_swarmplot',
     'plot_correlation_heatmap',
-    
+
     # ML regression
     'eval_regression',
+    'compare_cv_metrics',
+    'tune_pipelines',
+    'tune_single_model',
+    'tune_all_models',
+    'get_model_pipeline',
+    'get_hyperparameters',
     'compare_cv_metrics_regression',
     'tune_pipelines_regression',
     'tune_single_model_regression',
