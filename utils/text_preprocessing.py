@@ -98,9 +98,8 @@ class TextPreprocessor:
     
     # Pre-compiled regex patterns for performance
     _URL_PATTERN = re.compile(
-        r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
-        r'|(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+(?:/\S*)?'
-        r'|bit\.ly/\S+|goo\.gl/\S+|t\.co/\S+|tinyurl\.com/\S+'
+        r'(?i)(?<![\w@])(?:https?://|www\.)\S+'
+        r'|(?<![\w@])(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/\S*)?'
     )
     _EMAIL_PATTERN = re.compile(r'\S+@\S+')
     _MENTION_PATTERN = re.compile(r'[@#]\w+')
@@ -136,8 +135,11 @@ class TextPreprocessor:
         """Check if required optional dependencies are available."""
         if not NLTK_AVAILABLE:
             raise ImportError(
-                "NLTK is required for text preprocessing. "
-                "Install with: pip install nltk"
+                "NLTK is required for text preprocessing. Install the text "
+                "extras with: uv sync --extra text (or pip install "
+                "data-science-utils[text]). Then download the required corpora "
+                "with nltk.download('stopwords'), nltk.download('punkt'), and "
+                "nltk.download('wordnet')."
             )
     
     def add_stopwords(self, words: Union[str, List[str], Set[str]]) -> None:
@@ -610,11 +612,11 @@ class TextPreprocessor:
         if opts['remove_html']:
             text = self.remove_html(text)
         
-        if opts['remove_urls']:
-            text = self.remove_urls(text)
-        
         if opts['remove_emails']:
             text = self.remove_emails(text)
+
+        if opts['remove_urls']:
+            text = self.remove_urls(text)
         
         if opts['remove_social']:
             text = self.remove_social_handles(text)

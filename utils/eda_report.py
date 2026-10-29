@@ -2,6 +2,7 @@ import base64
 import contextlib
 import io
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -327,6 +328,7 @@ def generate_eda_report(
 
     if title is None:
         title = "EDA Report"
+    safe_title = escape(title)
 
     report_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     column_types = _get_column_types(df)
@@ -393,21 +395,22 @@ def generate_eda_report(
     # ── 6. Correlation Analysis ───────────────────────────────────────────────────
     corr_target_html = ""
     corr_high_html = ""
+
+    if numeric_features and target and target in column_types["numeric"]:
+        with contextlib.redirect_stdout(io.StringIO()):
+            feature_target_corr = calculate_correlation_tabular(
+                df[numeric_features + [target]],
+                target_col=target,
+                method=corr_method,
+                corr_type="feature_target",
+            )
+        if not feature_target_corr.empty:
+            corr_target_html = _df_to_html(feature_target_corr)
+
     if len(numeric_features) >= 2:
         if verbose:
             print("[5/6] Computing correlations...")
         corr_img = _plot_correlation_heatmap(df, numeric_features, method=corr_method)
-
-        if target and target in column_types["numeric"]:
-            with contextlib.redirect_stdout(io.StringIO()):
-                feature_target_corr = calculate_correlation_tabular(
-                    df[numeric_features + [target]],
-                    target_col=target,
-                    method=corr_method,
-                    corr_type="feature_target",
-                )
-            if not feature_target_corr.empty:
-                corr_target_html = _df_to_html(feature_target_corr)
 
         high_corr = _get_high_correlations(
             df, numeric_features, method=corr_method, threshold=corr_threshold
@@ -439,7 +442,7 @@ def generate_eda_report(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
+    <title>{safe_title}</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -467,7 +470,7 @@ def generate_eda_report(
     </style>
 </head>
 <body>
-    <h1>{title}</h1>
+    <h1>{safe_title}</h1>
     <p class="meta">Generated on {report_date}</p>
 
     <div class="section">

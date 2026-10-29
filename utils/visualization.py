@@ -9,6 +9,18 @@ from typing import List, Optional, Tuple, Any
 # ║                       Functions for Data Visualization                           ║
 # ╚══════════════════════════════════════════════════════════════════════════════════╝
 
+
+def _flatten_axes(ax) -> np.ndarray:
+    """Return a flat array of Axes for both single- and multi-plot grids."""
+    if isinstance(ax, np.ndarray):
+        return ax.ravel()
+    return np.array([ax])
+
+
+def _validate_columns(col_series: List[str]) -> None:
+    if not col_series:
+        raise ValueError("col_series must contain at least one column")
+
 ## Hisplot and kdeplot analysis
 def plot_dynamic_hisplots_kdeplots(df: pd.DataFrame, col_series: List[str], plot_type: str = 'histplot', ncols: int = 6, figsize: Tuple[int, int] = (26, 18), hue: Optional[str] = None, multiple: str = 'layer', fill: Optional[bool] = None) -> None:
     """
@@ -66,17 +78,16 @@ def plot_dynamic_hisplots_kdeplots(df: pd.DataFrame, col_series: List[str], plot
     if plot_type not in ['histplot', 'kdeplot']:
         raise ValueError("plot_type must be either 'histplot' or 'kdeplot'")
 
+    _validate_columns(col_series)
+
     # Calculate required number of rows based on number of plots and specified columns
     num_plots = len(col_series)
     nrows = math.ceil(num_plots / ncols)
 
     fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
-    
-    # Convert ax to array if it's a single subplot
-    if num_plots == 1:
-        ax = np.array([ax])
-    else: 
-        ax = ax.flatten()  # Flatten the axes array for easy indexing
+
+    # Flatten the axes array for easy indexing, including the single-plot case
+    ax = _flatten_axes(ax)
 
     # Generate plots for each column
     for i, col in enumerate(col_series):
@@ -136,6 +147,8 @@ def plot_dynamic_boxplots_violinplots(df: pd.DataFrame, col_series: List[str], p
     if plot_type not in ['boxplot', 'violinplot']:
         raise ValueError("plot_type must be either 'boxplot' or 'violinplot'")
 
+    _validate_columns(col_series)
+
     # Calculate required number of rows based on number of plots and specified columns
     num_plots = len(col_series)
     nrows = math.ceil(num_plots / ncols)
@@ -145,12 +158,8 @@ def plot_dynamic_boxplots_violinplots(df: pd.DataFrame, col_series: List[str], p
         figsize = (figsize[1], figsize[0])  # Swap width and height for horizontal plots
 
     fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
-    
-    # Convert ax to array if it's a single subplot
-    if num_plots == 1:
-        ax = np.array([ax])
-    else: 
-        ax = ax.flatten()  # Flatten the axes array for easy indexing
+
+    ax = _flatten_axes(ax)
 
     # Generate plots for each column
     for i, col in enumerate(col_series):
@@ -235,17 +244,15 @@ def plot_dynamic_countplot(df: pd.DataFrame, col_series: List[str], ncols: int =
     ... )
     """
 
+    _validate_columns(col_series)
+
     # Calculate required number of rows based on number of plots and specified columns
     num_plots = len(col_series)
     nrows = math.ceil(num_plots / ncols)
 
     fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
-    
-    # Convert ax to array if it's a single subplot
-    if num_plots == 1:
-        ax = np.array([ax])
-    else: 
-        ax = ax.flatten()  # Flatten the axes array for easy indexing
+
+    ax = _flatten_axes(ax)
 
     # Generate countplot for each column
     for i, col in enumerate(col_series):
@@ -323,16 +330,18 @@ def plot_dynamic_stripplot_swarmplot(df: pd.DataFrame, cat_col: str, nums_cols_s
     if plot_type not in ['stripplot', 'swarmplot']:
         raise ValueError("plot_type must be either 'stripplot' or 'swarmplot'")
     
+    _validate_columns(nums_cols_series)
+
     # Calculate number of rows needed based on number of plots and columns
     n_plots = len(nums_cols_series)
     n_rows = (n_plots + n_cols - 1) // n_cols
-    
+
     # Create subplots
-    fig, ax = plt.subplots(nrows=n_rows, ncols=n_cols, 
+    fig, ax = plt.subplots(nrows=n_rows, ncols=n_cols,
                           figsize=figsize)
-    
+
     # Flatten axes array for easier iteration
-    ax = ax.flatten() if n_plots > 1 else [ax]
+    ax = _flatten_axes(ax)
     
     # Create plots
     for i, num_col in enumerate(nums_cols_series):

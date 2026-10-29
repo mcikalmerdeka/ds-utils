@@ -6,22 +6,26 @@ from sklearn.metrics import (
     root_mean_squared_error,
     mean_absolute_percentage_error,
     r2_score,
-    get_scorer
 )
-from sklearn.model_selection import cross_validate, RepeatedKFold, RandomizedSearchCV, GridSearchCV, learning_curve
-from sklearn.base import clone
+from sklearn.model_selection import cross_validate, RepeatedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from xgboost import XGBRegressor
-import time
-from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+
+from ._ml_common import (
+    REGRESSION_TASK,
+    _configure_logging,
+    logger,
+    tune_models,
+)
+from ._plotting import finalize_figure
 
 # ╔══════════════════════════════════════════════════════════════════════════════════╗
 # ║            Functions for Machine Learning Evaluation                             ║
@@ -40,7 +44,9 @@ def eval_regression(
     plot_residuals_dist=True,
     n_splits=5,
     n_repeats=3,
-    random_state=42
+    random_state=42,
+    show_plots=True,
+    display=True
 ) -> dict:
     """
     Comprehensively evaluate a regression model using multiple metrics 
@@ -83,6 +89,12 @@ def eval_regression(
         Number of times to repeat cross-validation
     random_state : int, optional (default=42)
         Seed for reproducibility of cross-validation splits
+    show_plots : bool, optional (default=True)
+        Whether to call ``plt.show`` after building each figure. Set False to
+        keep figures open without blocking (notebooks, tests, batch jobs).
+    display : bool, optional (default=True)
+        Whether to log the metric summary at INFO level. False suppresses the
+        summary without affecting returned metrics or figures.
 
     Example:
     --------
@@ -107,6 +119,7 @@ def eval_regression(
     Exception
         If any error occurs during model evaluation
     """
+    _configure_logging(display)
     try:
         # Utility function to convert input to numpy array
         def to_numpy(arr):
@@ -230,29 +243,45 @@ def eval_regression(
                     'train': metric_func(y_train, y_pred_train)
                 }
 
-        # Print results
-        print(f"Performance Metrics for {model.__class__.__name__}:")
-        print("\nCross-Validated Metrics (mean ± std):")
+        # Log results
+        logger.info("Performance Metrics for %s:", model.__class__.__name__)
+        logger.info("\nCross-Validated Metrics (mean ± std):")
         # Order metrics for display
         display_metrics = ['mae', 'mse', 'rmse', 'mape', 'r2']
         for metric in display_metrics:
-            print(f"\n{metric.upper()}:")
+            logger.info("\n%s:", metric.upper())
             if metric == 'mape':
-                 print(f"  Test:  {metrics['cv'][metric]['test_mean']*100:.2f}% ± {metrics['cv'][metric]['test_std']*100:.2f}%")
-                 print(f"  Train: {metrics['cv'][metric]['train_mean']*100:.2f}% ± {metrics['cv'][metric]['train_std']*100:.2f}%")
+                logger.info(
+                    "  Test:  %.2f%% ± %.2f%%",
+                    metrics['cv'][metric]['test_mean'] * 100,
+                    metrics['cv'][metric]['test_std'] * 100,
+                )
+                logger.info(
+                    "  Train: %.2f%% ± %.2f%%",
+                    metrics['cv'][metric]['train_mean'] * 100,
+                    metrics['cv'][metric]['train_std'] * 100,
+                )
             else:
-                 print(f"  Test:  {metrics['cv'][metric]['test_mean']:.4f} ± {metrics['cv'][metric]['test_std']:.4f}")
-                 print(f"  Train: {metrics['cv'][metric]['train_mean']:.4f} ± {metrics['cv'][metric]['train_std']:.4f}")
+                logger.info(
+                    "  Test:  %.4f ± %.4f",
+                    metrics['cv'][metric]['test_mean'],
+                    metrics['cv'][metric]['test_std'],
+                )
+                logger.info(
+                    "  Train: %.4f ± %.4f",
+                    metrics['cv'][metric]['train_mean'],
+                    metrics['cv'][metric]['train_std'],
+                )
 
-        print("\nSingle Run Metrics:")
+        logger.info("\nSingle Run Metrics:")
         for metric in display_metrics:
-            print(f"\n{metric.upper()}:")
+            logger.info("\n%s:", metric.upper())
             if metric == 'mape':
-                print(f"  Test:  {metrics[metric]['test']*100:.2f}%")
-                print(f"  Train: {metrics[metric]['train']*100:.2f}%")
+                logger.info("  Test:  %.2f%%", metrics[metric]['test'] * 100)
+                logger.info("  Train: %.2f%%", metrics[metric]['train'] * 100)
             else:
-                print(f"  Test:  {metrics[metric]['test']:.4f}")
-                print(f"  Train: {metrics[metric]['train']:.4f}")
+                logger.info("  Test:  %.4f", metrics[metric]['test'])
+                logger.info("  Train: %.4f", metrics[metric]['train'])
 
         # Plot 1: Predicted vs Actual
         if plot_predicted_vs_actual:
@@ -292,8 +321,7 @@ def eval_regression(
             ax2.text(0.05, 0.95, f'R² = {r2_test:.4f}', transform=ax2.transAxes,
                     verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
             
-            plt.tight_layout()
-            plt.show()
+            finalize_figure(fig, show=show_plots)
 
         # Plot 2: Residuals vs Predicted
         if plot_residuals:
@@ -321,8 +349,7 @@ def eval_regression(
             ax2.set_title(f'Residuals vs Predicted - Test Set\n{model.__class__.__name__}')
             ax2.grid(True, alpha=0.3)
             
-            plt.tight_layout()
-            plt.show()
+            finalize_figure(fig, show=show_plots)
 
         # Plot 3: Residuals Distribution
         if plot_residuals_dist:
@@ -371,17 +398,18 @@ def eval_regression(
             ax2.legend()
             ax2.grid(True, alpha=0.3)
             
-            plt.tight_layout()
-            plt.show()
+            finalize_figure(fig, show=show_plots)
 
         return metrics
 
     except Exception as e:
-        print(f"Error during evaluation: {str(e)}")
+        logger.exception("Error during evaluation: %s", e)
         raise
 
 # Function to compare cross-validated metrics from multiple models
-def compare_cv_metrics(metrics_dict: dict) -> pd.DataFrame:
+def compare_cv_metrics(
+    metrics_dict: dict, *, as_numeric: bool = False
+) -> pd.DataFrame:
     """
     Compare cross-validated metrics from multiple models in a single table.
     
@@ -393,6 +421,8 @@ def compare_cv_metrics(metrics_dict: dict) -> pd.DataFrame:
     metrics_dict : dict
         Dictionary with model names as keys and metrics dictionaries as values.
         Format: {'model_name': metrics_dict_from_eval_regression}
+    as_numeric : bool, optional (default=False)
+        Return raw float means instead of the formatted strings.
         
     Returns:
     --------
@@ -426,15 +456,14 @@ def compare_cv_metrics(metrics_dict: dict) -> pd.DataFrame:
                 mean_val = metrics['cv'][metric]['test_mean']
                 std_val = metrics['cv'][metric]['test_std']
                 
-                # Format based on metric type
-                if metric == 'mape':
+                if as_numeric:
+                    row[f'{metric.upper()}'] = float(mean_val)
+                elif metric == 'mape':
                     row[f'{metric.upper()}'] = f"{mean_val*100:.2f}% ± {std_val*100:.2f}%"
-                elif metric == 'r2':
-                    row[f'{metric.upper()}'] = f"{mean_val:.4f} ± {std_val:.4f}"
                 else:
                     row[f'{metric.upper()}'] = f"{mean_val:.4f} ± {std_val:.4f}"
             else:
-                row[f'{metric.upper()}'] = 'N/A'
+                row[f'{metric.upper()}'] = np.nan if as_numeric else 'N/A'
         
         data.append(row)
     
@@ -465,381 +494,42 @@ def tune_pipelines(
     n_jobs=-1,
     plot_validation_curves=False,
     plot_learning_curves=True,
-    progress_bar=False
+    progress_bar=False,
+    show=True
 ) -> tuple:
     """
-    Perform hyperparameter tuning with grid/random search and optional validation curve plots.
+    Perform hyperparameter tuning with grid/random search and optional curves.
 
-    Parameters:
-    -----------
-    pipedict : dict
-        Dictionary of pipeline names and their corresponding pipeline objects
-    param_grid : dict
-        Dictionary of parameter grids for each pipeline
-    X_train, y_train : array-like
-        Training data
-    X_test, y_test : array-like
-        Test data
-    scoring : str, optional (default='neg_mean_squared_error')
-        Metric to optimize during search. Common options:
-        - 'neg_mean_squared_error' (MSE, negated for maximization)
-        - 'neg_mean_absolute_error' (MAE, negated for maximization)
-        - 'r2' (R-squared, higher is better)
-    search_method : str, optional (default='grid')
-        Search method: 'grid' for GridSearchCV, 'random' for RandomizedSearchCV
-    n_iter : int, optional (default=50)
-        Number of parameter combinations to try (only for random search)
-    n_splits : int, optional (default=5)
-        Number of splits for cross-validation
-    n_repeats : int, optional (default=3)
-        Number of times to repeat cross-validation
-    random_state : int, optional (default=42)
-        Seed for reproducibility
-    display : bool, optional (default=True)
-        Whether to display detailed results
-    n_jobs : int, optional (default=-1)
-        Number of CPU cores to use
-    plot_validation_curves : bool, optional (default=False)
-        Whether to plot validation curves (score vs hyperparameter value) for each parameter.
-        Note: This fits models separately from the main search and can be slow.
-    plot_learning_curves : bool, optional (default=True)
-        Whether to plot learning curves (score vs training set size) after hyperparameter tuning.
-        Uses the best estimator from the search to diagnose underfitting/overfitting and 
-        determine if more data would help. Shows training score vs validation score across
-        different training set sizes.
-    progress_bar : bool, optional (default=False)
-        Whether to display a progress bar for parameter evaluations
+    This adapter delegates to the shared ML tuning layer. See
+    ``utils._ml_common.tune_models`` for the full parameter documentation.
 
     Returns:
     --------
     tuple
         (dictionary of fitted search objects, list of fitting times)
-    
-    Example:
-    --------
-    >>> fitted_models, times = tune_pipelines(
-    >>>     pipedict={'rf': RandomForestRegressor()},
-    >>>     param_grid={'rf': {'n_estimators': [10, 50, 100]}},
-    >>>     X_train=X_train, y_train=y_train,
-    >>>     X_test=X_test, y_test=y_test,
-    >>>     search_method='random', n_iter=20
-    >>> )
     """
-    fitted_models = {}
-    fit_times = []
-
-    # Wrap pipeline iteration with optional tqdm
-    pipe_iter = tqdm(pipedict.items(), desc="Processing Pipelines",
-                    position=0, leave=True) if progress_bar else pipedict.items()
-
-    for name, pipeline in pipe_iter:
-        try:
-            # Plot validation curves if requested (shows score vs hyperparameter value)
-            if plot_validation_curves:
-                _plot_validation_curves(
-                    pipeline=pipeline,
-                    param_grid=param_grid[name],
-                    X_train=X_train,
-                    y_train=y_train,
-                    X_test=X_test,
-                    y_test=y_test,
-                    scoring=scoring,
-                    name=name,
-                    display=display,
-                    progress_bar=progress_bar
-                )
-
-            # Construct cross-validation strategy (RepeatedKFold for regression)
-            cv = RepeatedKFold(
-                n_splits=n_splits,
-                n_repeats=n_repeats,
-                random_state=random_state
-            )
-
-            # Choose search method
-            if search_method == 'random':
-                model = RandomizedSearchCV(
-                    estimator=pipeline,
-                    param_distributions=param_grid[name],
-                    n_iter=n_iter,
-                    scoring=scoring,
-                    cv=cv,
-                    verbose=2 if display else 0,
-                    n_jobs=n_jobs,
-                    random_state=random_state,
-                    return_train_score=True,
-                    error_score='raise'
-                )
-            else:  # grid search
-                model = GridSearchCV(
-                    estimator=pipeline,
-                    param_grid=param_grid[name],
-                    scoring=scoring,
-                    cv=cv,
-                    verbose=2 if display else 0,
-                    n_jobs=n_jobs,
-                    return_train_score=True,
-                    error_score='raise'
-                )
-
-            # Fit with timing
-            start_time = time.time()
-            model.fit(X_train, y_train)
-            fit_time = time.time() - start_time
-            fit_times.append(round(fit_time, 2))
-
-            # Store fitted model
-            fitted_models[name] = model
-
-            if display:
-                print(f"\n{'='*50}")
-                print(f"Results for {name} ({search_method.upper()} Search)")
-                print(f"{'='*50}")
-                print(f"Fit Time: {fit_time:.2f}s")
-                print(f"Best CV {scoring}: {model.best_score_:.4f}")
-                print("\nBest Parameters:")
-                for param, value in model.best_params_.items():
-                    print(f"  {param}: {value}")
-                
-                # Show test score with best estimator
-                scorer = get_scorer(scoring)
-                test_score = scorer(model.best_estimator_, X_test, y_test)
-                print(f"\nTest {scoring}: {test_score:.4f}")
-                
-                # Plot learning curves if requested
-                if plot_learning_curves:
-                    print(f"\nGenerating learning curves for {name}...")
-                    _plot_learning_curves(
-                        estimator=model.best_estimator_,
-                        X_train=X_train,
-                        y_train=y_train,
-                        scoring=scoring,
-                        name=name,
-                        n_splits=n_splits,
-                        n_repeats=n_repeats,
-                        random_state=random_state
-                    )
-
-        except Exception as e:
-            print(f"Error during {name} pipeline tuning: {str(e)}")
-            raise
-
-    return fitted_models, fit_times
-
-# Function for plotting validation curves
-def _plot_validation_curves(
-    pipeline,
-    param_grid: dict,
-    X_train,
-    y_train,
-    X_test,
-    y_test,
-    scoring: str,
-    name: str,
-    display: bool = True,
-    progress_bar: bool = False
-):
-    """
-    Plot validation curves showing score vs hyperparameter value for each parameter.
-    
-    This is an internal helper function used by tune_pipelines.
-    """
-    # Wrap param_grid iteration with optional tqdm
-    param_iter = tqdm(param_grid.items(), desc=f"Validation Curves for {name}",
-                    position=1, leave=True) if progress_bar else param_grid.items()
-
-    for param_name, param_values in param_iter:
-        if not isinstance(param_values, (list, np.ndarray)):
-            continue
-
-        # Skip parameters with too few values
-        if len(param_values) < 2:
-            continue
-
-        # Initialize score lists
-        train_scores = []
-        test_scores = []
-
-        if display:
-            print(f"\nValidation curve for {param_name}...")
-
-        for value in param_values:
-            # Create a copy of the pipeline with the current parameter value
-            current_pipeline = clone(pipeline)
-            current_pipeline.set_params(**{param_name: value})
-
-            # Fit and evaluate
-            current_pipeline.fit(X_train, y_train)
-
-            # Use the scorer directly (it handles the correct signature)
-            scorer = get_scorer(scoring)
-            train_score = scorer(current_pipeline, X_train, y_train)
-            test_score = scorer(current_pipeline, X_test, y_test)
-            
-            # Scores are already in the correct sign (negative for errors, positive for R2)
-            # No need to negate here - display them as-is for validation curves
-
-            train_scores.append(train_score)
-            test_scores.append(test_score)
-
-            if display:
-                print(f'  {param_name}={value}: train={train_score:.3f}, test={test_score:.3f}')
-
-        # Plot validation curve
-        plt.figure(figsize=(10, 6))
-        plt.plot(param_values, train_scores, 'o-', label='Train', linewidth=2)
-        plt.plot(param_values, test_scores, 'o-', label='Test', linewidth=2)
-
-        # Find best parameter value
-        # For all scorers in sklearn: higher is better (errors are negated)
-        best_idx = np.argmax(test_scores)
-        best_value = param_values[best_idx]
-        best_score = test_scores[best_idx]
-
-        # Add vertical line and annotation for best value
-        plt.axvline(x=best_value, color='r', linestyle='--', alpha=0.5)
-        plt.annotate(
-            f'Best: {best_value}\nScore: {best_score:.3f}',
-            xy=(best_value, best_score),
-            xytext=(10, -30), textcoords='offset points',
-            bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.7),
-            arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0')
-        )
-
-        plt.title(f'Validation Curve: {name} | {param_name}')
-        plt.xlabel(param_name)
-        plt.ylabel(scoring.upper().replace('NEG_', ''))
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
-        plt.show()
-
-# Function for plotting learning curves
-def _plot_learning_curves(
-    estimator,
-    X_train,
-    y_train,
-    scoring: str,
-    name: str,
-    n_splits: int = 5,
-    n_repeats: int = 3,
-    random_state: int = 42
-):
-    """
-    Plot learning curves showing training and validation scores vs training set size.
-    
-    This helps diagnose underfitting/overfitting and determine if more data would help.
-    Uses RepeatedKFold for robust cross-validation.
-    
-    Parameters:
-    -----------
-    estimator : sklearn estimator
-        The fitted best estimator from hyperparameter tuning
-    X_train, y_train : array-like
-        Training data
-    scoring : str
-        Scoring metric to use (e.g., 'neg_mean_squared_error', 'r2')
-    name : str
-        Model name for the plot title
-    n_splits : int, optional (default=5)
-        Number of CV splits
-    n_repeats : int, optional (default=3)
-        Number of CV repeats
-    random_state : int, optional (default=42)
-        Random seed for reproducibility
-    """
-    # Create CV strategy
-    cv = RepeatedKFold(
+    return tune_models(
+        pipedict,
+        param_grid,
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        task=REGRESSION_TASK,
+        scoring=scoring,
+        search_method=search_method,
+        n_iter=n_iter,
         n_splits=n_splits,
         n_repeats=n_repeats,
-        random_state=random_state
-    )
-    
-    # Define training set sizes (percentages of training data)
-    train_sizes = np.linspace(0.1, 1.0, 10)
-    
-    # Calculate learning curve
-    train_sizes_abs, train_scores, test_scores = learning_curve(
-        estimator=estimator,
-        X=X_train,
-        y=y_train,
-        train_sizes=train_sizes,
-        cv=cv,
-        scoring=scoring,
-        n_jobs=-1,
         random_state=random_state,
-        return_times=False
+        display=display,
+        n_jobs=n_jobs,
+        plot_validation_curves=plot_validation_curves,
+        plot_learning_curves=plot_learning_curves,
+        progress_bar=progress_bar,
+        show=show,
     )
-    
-    # Calculate mean and std
-    train_scores_mean = np.mean(train_scores, axis=1)
-    train_scores_std = np.std(train_scores, axis=1)
-    test_scores_mean = np.mean(test_scores, axis=1)
-    test_scores_std = np.std(test_scores, axis=1)
-    
-    # Plot learning curve
-    fig, ax = plt.subplots(figsize=(12, 8))
-    
-    # Plot training scores
-    ax.plot(train_sizes_abs, train_scores_mean, 'o-', color='blue', 
-            label='Training Score', linewidth=2.5, markersize=8)
-    ax.fill_between(train_sizes_abs, train_scores_mean - train_scores_std,
-                    train_scores_mean + train_scores_std, alpha=0.2, color='blue')
-    
-    # Plot validation scores
-    ax.plot(train_sizes_abs, test_scores_mean, 'o-', color='darkorange',
-            label='Validation Score', linewidth=2.5, markersize=8)
-    ax.fill_between(train_sizes_abs, test_scores_mean - test_scores_std,
-                    test_scores_mean + test_scores_std, alpha=0.2, color='darkorange')
-    
-    # For error metrics (negative), calculate gap differently
-    if scoring.startswith('neg_'):
-        final_train = train_scores_mean[-1]
-        final_val = test_scores_mean[-1]
-        gap = final_val - final_train  # For negative scores, smaller gap is better
-        # Convert to positive for display (multiply by -1)
-        display_final_train = -final_train
-        display_final_val = -final_val
-        display_gap = -gap
-    else:
-        final_train = train_scores_mean[-1]
-        final_val = test_scores_mean[-1]
-        gap = final_train - final_val
-        display_final_train = final_train
-        display_final_val = final_val
-        display_gap = gap
-    
-    # Add text box with gap analysis
-    textstr = f'Final Gap: {display_gap:.3f}\n'
-    if display_gap < 0.01:
-        textstr += 'Status: Well-fitted ✓'
-    elif display_gap < 0.05:
-        textstr += 'Status: Slight overfitting'
-    else:
-        textstr += 'Status: High variance (overfitting)'
-    
-    # Check if more data would help (for positive metrics like R2)
-    if not scoring.startswith('neg_'):
-        if test_scores_mean[-1] - test_scores_mean[0] > 0.05:
-            textstr += '\nMore data may help'
-    else:
-        # For negative metrics (errors), check if validation is still improving
-        if test_scores_mean[0] - test_scores_mean[-1] > 0.05:  # Error decreasing
-            textstr += '\nMore data may help'
-    
-    ax.text(0.02, 0.98, textstr, transform=ax.transAxes, fontsize=11,
-            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-    
-    # Configure plot
-    ax.set_xlabel('Training Set Size', fontsize=12)
-    ax.set_ylabel(f'{scoring.upper().replace("NEG_", "")} Score', fontsize=12)
-    ax.set_title(f'Learning Curves - {name}\n(Best Model After Hyperparameter Tuning)', 
-                fontsize=14)
-    ax.legend(loc='best', fontsize=11)
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
+
 
 # Define supported models for regression
 SUPPORTED_MODELS = ['linearregression', 'ridge', 'lasso', 'elasticnet', 'knn', 'decisiontree', 'randomforest', 'gb', 'xgboost']
@@ -1068,7 +758,8 @@ def tune_single_model(
     display=True,
     plot_validation_curves=False,
     plot_learning_curves=True,
-    progress_bar=False
+    progress_bar=False,
+    show=True
 ) -> tuple:
     """
     Tune a single regression model using grid or random search.
@@ -1144,7 +835,8 @@ def tune_single_model(
         display=display,
         plot_validation_curves=plot_validation_curves,
         plot_learning_curves=plot_learning_curves,
-        progress_bar=progress_bar
+        progress_bar=progress_bar,
+        show=show
     )
     
     return fitted_models[model_name], fit_times[0]
@@ -1164,7 +856,8 @@ def tune_all_models(
     random_state=42,
     display=True,
     plot_learning_curves=True,
-    progress_bar=True
+    progress_bar=True,
+    show=True
 ) -> tuple:
     """
     Tune multiple regression models using grid or random search.
@@ -1244,7 +937,8 @@ def tune_all_models(
         random_state=random_state,
         display=display,
         plot_learning_curves=plot_learning_curves,
-        progress_bar=progress_bar
+        progress_bar=progress_bar,
+        show=show
     )
 
     return fitted_models, times

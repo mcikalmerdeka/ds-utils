@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -10,6 +12,26 @@ from typing import List, Dict, Union, Optional, Any, Tuple
 # ╔══════════════════════════════════════════════════════════════════════════════════╗
 # ║                       Functions for Data Pre-Processing                          ║
 # ╚══════════════════════════════════════════════════════════════════════════════════╝
+
+_OUTLIER_SUMMARY_COLUMNS = [
+    'Column Name',
+    'Outlier Exist',
+    'Lower Limit',
+    'Upper Limit',
+    'Outlier Data',
+    'Non-Outlier Data',
+    'Outlier Percentage (%)',
+]
+
+
+def _apply_log1p(series: pd.Series, column: str) -> pd.Series:
+    """Apply log1p only when all observed values are non-negative."""
+    if (series.dropna() < 0).any():
+        raise ValueError(
+            f"Cannot apply log1p to column '{column}': values must be non-negative"
+        )
+    return np.log1p(series)
+
 
 ## Checking basic data information
 def check_data_information(data: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
@@ -37,7 +59,26 @@ def check_data_information(data: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
     list_item = []
     total_rows = len(data)
     duplicated_rows = data.duplicated().sum() # Calculate once as it's global
-    
+    summary_columns = [
+        'Feature',
+        'Data Type',
+        'Null Values',
+        'Null Percentage',
+        'Zero Values',
+        'Zero Percentage',
+        'Negative Values',
+        'Negative Percentage',
+        'Empty Strings',
+        'Numeric in Object',
+        'Duplicated Values',
+        'Unique Values',
+        'Cardinality Ratio',
+        'Unique Sample'
+    ]
+
+    if total_rows == 0:
+        return pd.DataFrame(columns=summary_columns)
+
     for col in cols:
         series = data[col]
         
@@ -100,25 +141,7 @@ def check_data_information(data: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
             unique_sample        # Sample of unique values
         ])
 
-    desc_df = pd.DataFrame(
-        data=list_item,
-        columns=[
-            'Feature',
-            'Data Type',
-            'Null Values',
-            'Null Percentage',
-            'Zero Values',
-            'Zero Percentage',
-            'Negative Values',
-            'Negative Percentage',
-            'Empty Strings',
-            'Numeric in Object',
-            'Duplicated Values',
-            'Unique Values',
-            'Cardinality Ratio',
-            'Unique Sample'
-        ]
-    )
+    desc_df = pd.DataFrame(data=list_item, columns=summary_columns)
     return desc_df
 
 ## Drop columns function
@@ -241,11 +264,29 @@ def handle_missing_values(data: pd.DataFrame, columns: List[str], strategy: str 
     missing_cols = [col for col in columns if col not in df_imputed.columns]
     if missing_cols:
         raise ValueError(f"Columns not found in dataframe: {missing_cols}")
-    
+
+    valid_strategies = {'median', 'mean', 'mode', 'ffill', 'bfill', 'knn', 'remove'}
+    if strategy not in valid_strategies:
+        raise ValueError(
+            f"Unknown strategy: {strategy}. Use 'median', 'mean', 'mode', "
+            "'ffill', 'bfill', 'knn', or 'remove'"
+        )
+
+    if strategy in {'median', 'mean', 'knn'}:
+        non_numeric = [
+            col for col in columns
+            if not pd.api.types.is_numeric_dtype(df_imputed[col])
+        ]
+        if non_numeric:
+            raise ValueError(
+                f"strategy='{strategy}' requires numeric columns; use 'mode' "
+                f"for categorical columns: {non_numeric}"
+            )
+
     # Remove rows with missing values
     if strategy == 'remove':
         return df_imputed.dropna(subset=columns), None
-    
+
     # Simple imputation methods
     elif strategy in ['median', 'mean', 'mode']:
         if strategy == 'median':
@@ -261,7 +302,7 @@ def handle_missing_values(data: pd.DataFrame, columns: List[str], strategy: str 
     
     # Forward/backward fill
     elif strategy in ['ffill', 'bfill']:
-        df_imputed[columns] = df_imputed[columns].fillna(method=strategy)
+        df_imputed[columns] = getattr(df_imputed[columns], strategy)()
         return df_imputed, None
     
     # KNN imputation (advanced)
@@ -321,7 +362,7 @@ def filter_outliers(data: pd.DataFrame, columns: List[str], method: str = 'iqr',
     """
     if columns is None or len(columns) == 0:
         if detect_only:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=_OUTLIER_SUMMARY_COLUMNS)
         return data if not return_mask else (data, np.array([True] * len(data)))
 
     if method.lower() not in ['iqr', 'zscore']:
@@ -331,6 +372,11 @@ def filter_outliers(data: pd.DataFrame, columns: List[str], method: str = 'iqr',
     missing_cols = [col for col in columns if col not in data.columns]
     if missing_cols:
         raise ValueError(f"Columns not found in dataframe: {missing_cols}")
+
+    # Detection statistics are undefined for an empty frame; return the
+    # documented summary schema without dividing by zero.
+    if len(data) == 0 and detect_only:
+        return pd.DataFrame(columns=_OUTLIER_SUMMARY_COLUMNS)
     
     # Initialize tracking variables for detection mode
     if detect_only:
@@ -346,34 +392,50 @@ def filter_outliers(data: pd.DataFrame, columns: List[str], method: str = 'iqr',
     
     # Loop through each column
     for col in columns:
+        series = data[col]
+        missing_mask = series.isna()
+
         # IQR method
         if method.lower() == 'iqr':
-            Q1 = data[col].quantile(0.25)
-            Q3 = data[col].quantile(0.75)
+            Q1 = series.quantile(0.25)
+            Q3 = series.quantile(0.75)
             IQR = Q3 - Q1
             lower_bound = Q1 - (IQR * threshold)
             upper_bound = Q3 + (IQR * threshold)
-            filter_outlier = ((data[col] >= lower_bound) & (data[col] <= upper_bound))
-            
+            filter_outlier = missing_mask | (
+                (series >= lower_bound) & (series <= upper_bound)
+            )
+
         # Z-score method
         elif method.lower() == 'zscore':
-            z_scores = np.abs(stats.zscore(data[col]))
-            filter_outlier = (z_scores < threshold)
-            
-            mean = data[col].mean()
-            std = data[col].std()
+            z_scores = pd.Series(np.nan, index=series.index, dtype=float)
+            valid_mask = ~missing_mask
+            valid_values = series[valid_mask]
+            valid_std = valid_values.std(ddof=0)
+            if len(valid_values) > 1 and valid_std > 0:
+                z_scores.loc[valid_mask] = np.abs(
+                    (valid_values - valid_values.mean()) / valid_std
+                )
+            # Non-finite z-scores occur for constant/single-row columns; such
+            # rows are valid observations, not outliers.
+            filter_outlier = (
+                missing_mask | ~np.isfinite(z_scores) | (z_scores < threshold)
+            )
+
+            mean = series.mean()
+            std = series.std()
             lower_bound = mean - (threshold * std)
             upper_bound = mean + (threshold * std)
-        
+
         # Store detection statistics
         if detect_only:
-            outlier_count = len(data[~filter_outlier])
-            non_outlier_count = len(data[filter_outlier])
+            outlier_count = int((~filter_outlier).sum())
+            non_outlier_count = int(filter_outlier.sum())
             outlier_pct = round((outlier_count / len(data)) * 100, 2)
-            
+
             outlier_counts.append(outlier_count)
             non_outlier_counts.append(non_outlier_count)
-            is_outlier_list.append(data[col][~filter_outlier].any())
+            is_outlier_list.append(bool(((~filter_outlier) & ~missing_mask).any()))
             low_bounds.append(lower_bound)
             high_bounds.append(upper_bound)
             outlier_percentages.append(outlier_pct)
@@ -514,6 +576,9 @@ def feature_scaling(data: pd.DataFrame, scaling_config: Optional[Dict[str, Any]]
         scaler=scalers
     )
     """
+    if data.empty:
+        raise ValueError("Cannot scale an empty DataFrame")
+
     df_scaled = data.copy()
     
     # --- MODE 1: Multiple scaling methods (new API) ---
@@ -559,7 +624,7 @@ def feature_scaling(data: pd.DataFrame, scaling_config: Optional[Dict[str, Any]]
             # Apply log transformation if requested
             if log_transform:
                 for col in cols:
-                    df_scaled[col] = np.log1p(df_scaled[col])
+                    df_scaled[col] = _apply_log1p(df_scaled[col], col)
             
             # Get or create scaler
             if is_training:
@@ -610,7 +675,7 @@ def feature_scaling(data: pd.DataFrame, scaling_config: Optional[Dict[str, Any]]
         # Apply log transformation if requested
         if apply_log:
             for col in columns:
-                df_scaled[col] = np.log1p(df_scaled[col])
+                df_scaled[col] = _apply_log1p(df_scaled[col], col)
         
         # Initialize scaler if not provided (training mode)
         if scaler is None:
@@ -731,7 +796,17 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
     binary_columns = binary_columns or []
     frequency_columns = frequency_columns or []
     ordinal_categories = ordinal_categories or {}
-    
+
+    if handle_unknown not in {"error", "ignore", "use_encoded_value"}:
+        raise ValueError(
+            "handle_unknown must be 'error', 'ignore', or 'use_encoded_value'"
+        )
+    if handle_unknown == "use_encoded_value" and nominal_columns:
+        raise ValueError(
+            "handle_unknown='use_encoded_value' is only supported for "
+            "ordinal_columns; OneHotEncoder cannot use that policy"
+        )
+
     # Validate inputs
     all_encoding_cols = ordinal_columns + nominal_columns + mean_encoding_columns + binary_columns + frequency_columns
     missing_cols = [col for col in all_encoding_cols if col not in data.columns]
@@ -762,6 +837,25 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
     # Initialize encoder storage
     is_fitting = encoders is None
     fitted_encoders = {} if is_fitting else encoders.copy()
+
+    if not is_fitting:
+        requested_encoders = (
+            [f'ordinal_{col}' for col in ordinal_columns]
+            + [f'onehot_{col}' for col in nominal_columns]
+            + [f'frequency_{col}' for col in frequency_columns]
+            + [f'binary_{col}' for col in binary_columns]
+        )
+        if mean_encoding_columns:
+            requested_encoders.append('mean_encoder')
+        missing_encoders = [
+            key for key in requested_encoders if key not in fitted_encoders
+        ]
+        if missing_encoders:
+            raise ValueError(
+                "Missing fitted encoders for: "
+                + ", ".join(missing_encoders)
+                + ". Pass the encoders returned by the training call."
+            )
     
     # ===== STEP 0: Handle binary (label) encoding =====
     if binary_columns:
@@ -787,15 +881,34 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
                 encoder_key = f'binary_{col}'
                 if encoder_key in fitted_encoders:
                     label_map = fitted_encoders[encoder_key]['mapping']
-                    df_preprocessed[col] = df_preprocessed[col].map(label_map)
-                    # Handle unknown values - map to NaN then fill with mode (0 or 1)
-                    if df_preprocessed[col].isna().any():
-                        print(f"Warning: Unknown values in binary column '{col}', mapping to 0")
-                        df_preprocessed[col] = df_preprocessed[col].fillna(0)
+                    raw_values = df_preprocessed[col]
+                    unknown_mask = raw_values.notna() & ~raw_values.isin(label_map)
+                    mapped_values = raw_values.map(label_map)
+
+                    if unknown_mask.any():
+                        unknown_values = raw_values[unknown_mask].unique().tolist()
+                        if handle_unknown == "error":
+                            raise ValueError(
+                                f"Unknown values in binary column '{col}': "
+                                f"{unknown_values}. Use handle_unknown='ignore' "
+                                "to map them to 0."
+                            )
+                        warnings.warn(
+                            f"Unknown values in binary column '{col}' mapped to 0: "
+                            f"{unknown_values}",
+                            UserWarning,
+                            stacklevel=2,
+                        )
+                        mapped_values = mapped_values.mask(unknown_mask, 0)
+
+                    # Preserve the established binary-encoding contract:
+                    # missing values are encoded as 0 during transform.
+                    df_preprocessed[col] = mapped_values.fillna(0)
     
     # ===== STEP 1: Handle ordinal and one-hot encoding =====
     sklearn_encoding_cols = ordinal_columns + nominal_columns
-    
+    encoded_only_cols = list(ordinal_columns)
+
     if sklearn_encoding_cols:
         # Prepare data by excluding datetime and mean encoding columns
         cols_to_exclude = datetime_columns + mean_encoding_columns
@@ -805,8 +918,9 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
             # Build transformers for training
             transformers = []
             for col in ordinal_columns:
-                # OrdinalEncoder doesn't support 'ignore', map it to 'use_encoded_value'
-                if handle_unknown == 'ignore':
+                # OrdinalEncoder doesn't support 'ignore'; both policies map
+                # unseen categories to -1.
+                if handle_unknown in {'ignore', 'use_encoded_value'}:
                     ord_handle_unknown = 'use_encoded_value'
                     ord_unknown_value = -1
                 else:
@@ -865,7 +979,8 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
             
             passthrough_cols = [c for c in df_for_sklearn.columns if c not in sklearn_encoding_cols]
             encoded_column_names.extend(passthrough_cols)
-            
+            encoded_only_cols = [c for c in encoded_column_names if c not in passthrough_cols]
+
             df_sklearn_encoded = pd.DataFrame(df_sklearn_encoded, columns=encoded_column_names, index=data.index)
         else:
             # Transform using pre-fitted encoders
@@ -890,7 +1005,8 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
                         oh_col_names = [f'{col}_{cat}' for cat in cats[1:]]
                     else:
                         oh_col_names = [f'{col}_{cat}' for cat in cats]
-                    
+
+                    encoded_only_cols.extend(oh_col_names)
                     oh_df = pd.DataFrame(oh_result, columns=oh_col_names, index=data.index)
                     onehot_dfs.append(oh_df)
             
@@ -899,8 +1015,12 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
             if onehot_dfs:
                 df_sklearn_encoded = pd.concat([df_sklearn_encoded] + onehot_dfs, axis=1)
         
-        # Convert to numeric (excluding frequency columns that will be encoded separately)
-        cols_to_convert = [col for col in df_sklearn_encoded.columns if col not in frequency_columns]
+        # Convert only encoded columns to numeric. Passthrough object columns
+        # must remain untouched; coercing them would silently turn text into NaN.
+        cols_to_convert = [
+            col for col in encoded_only_cols
+            if col in df_sklearn_encoded.columns and col not in frequency_columns
+        ]
         for col in cols_to_convert:
             df_sklearn_encoded[col] = pd.to_numeric(df_sklearn_encoded[col], errors='coerce')
     else:
@@ -1012,7 +1132,22 @@ def feature_encoding(data: pd.DataFrame, ordinal_columns: Optional[List[str]] = 
                     df_final[col] = df_final[col].astype(original_dtypes[col])
                 except Exception as e:
                     print(f"Warning: Could not convert column '{col}' back to {original_dtypes[col]}. Error: {e}")
-    
+
+    if is_fitting:
+        fitted_encoders["__output_columns__"] = list(df_final.columns)
+    else:
+        expected_columns = fitted_encoders.get("__output_columns__")
+        if expected_columns is not None:
+            missing_columns = [
+                col for col in expected_columns if col not in df_final.columns
+            ]
+            if missing_columns:
+                raise ValueError(
+                    "Cannot transform data: fitted encoder expects columns "
+                    f"that are missing from the input: {missing_columns}"
+                )
+            df_final = df_final.reindex(columns=expected_columns)
+
     return df_final, fitted_encoders
 
 

@@ -86,37 +86,52 @@ _COMMON_ENGLISH_WORDS = frozenset([
     'channel', 'music', 'song', 'official', 'movie', 'film', 'trailer'
 ])
 
-# Lazy-loaded langid identifier
+# Lazy-loaded langid identifiers. The constrained one is reused for explicit
+# target sets; the all-language one is kept separate so a previous constrained
+# call cannot leak into a later "detect all non-English" call.
 _identifier: Optional[LanguageIdentifier] = None
+_identifier_all: Optional[LanguageIdentifier] = None
 
 
-def _get_identifier() -> LanguageIdentifier:
-    """Return a lazily initialized langid identifier."""
-    global _identifier
-    if _identifier is None:
-        if not LANGID_AVAILABLE:
-            raise ImportError(
-                "Language detection requires the optional 'langid' package. "
-                "Install with: pip install data-science-utils[translate]"
-            )
-        _identifier = LanguageIdentifier.from_modelstring(model, norm_probs=True)
-    return _identifier
-
-
-def _require_translate_deps() -> None:
-    """Raise a clear ImportError if translation dependencies are missing."""
-    missing = []
-    if not DEEP_TRANSLATOR_AVAILABLE:
-        missing.append("deep-translator")
+def _require_detection_deps() -> None:
+    """Raise a clear ImportError if language-detection dependencies are missing."""
     if not LANGID_AVAILABLE:
-        missing.append("langid")
-    if not TENACITY_AVAILABLE:
-        missing.append("tenacity")
-    if missing:
         raise ImportError(
-            f"Translation utilities require optional dependencies: {', '.join(missing)}. "
-            "Install with: pip install data-science-utils[translate]"
+            "Language detection requires the optional 'langid' package. "
+            "Install with: uv sync --extra translate "
+            "(or pip install data-science-utils[translate])"
         )
+
+
+def _require_translation_deps() -> None:
+    """Raise a clear ImportError if translation dependencies are missing.
+
+    ``tenacity`` is optional: the module ships no-op fallback decorators.
+    """
+    if not DEEP_TRANSLATOR_AVAILABLE:
+        raise ImportError(
+            "Translation requires the optional 'deep-translator' package. "
+            "Install with: uv sync --extra translate "
+            "(or pip install data-science-utils[translate])"
+        )
+
+
+def _get_identifier(
+    target_langs: Optional[Set[str]] = None,
+) -> LanguageIdentifier:
+    """Return a langid identifier, optionally constrained to target languages."""
+    global _identifier, _identifier_all
+    _require_detection_deps()
+
+    if target_langs:
+        if _identifier is None:
+            _identifier = LanguageIdentifier.from_modelstring(model, norm_probs=True)
+        _identifier.set_languages(list(target_langs) + ['en'])
+        return _identifier
+
+    if _identifier_all is None:
+        _identifier_all = LanguageIdentifier.from_modelstring(model, norm_probs=True)
+    return _identifier_all
 
 
 def _get_script_pattern(languages: Optional[Set[str]] = None) -> re.Pattern:
@@ -205,11 +220,7 @@ def _is_obviously_english(text: str) -> bool:
         # If >30% of words are common English words, likely English
         if english_word_count / len(words) > 0.3:
             return True
-        
-        # If text is short (< 5 words) and all ASCII, assume English
-        if len(words) < 5:
-            return True
-    
+
     return False
 
 
@@ -244,8 +255,9 @@ def _is_target_language(
     if not isinstance(text, str) or not text.strip():
         return False
 
-    # Stage 0: Fast English filter - skip ML for obviously English text
-    if _is_obviously_english(text):
+    # Stage 0: Fast English filter. Only use it in "all non-English" mode;
+    # explicit target sets must go through detection even for short ASCII text.
+    if not target_langs and _is_obviously_english(text):
         return False
 
     # Stage 1: Unicode fast path — if target script characters are present, done
@@ -256,7 +268,11 @@ def _is_target_language(
     # Stage 2: ML detection
     try:
         lang, confidence = identifier.classify(text)
-        return lang in target_langs and confidence >= confidence_threshold
+        if confidence < confidence_threshold:
+            return False
+        if target_langs:
+            return lang in target_langs
+        return lang != "en"
     except Exception:
         return False
 
@@ -403,26 +419,27 @@ def detect_language_rows(
     elif isinstance(target_langs, list):
         target_langs = set(target_langs)
     
-    # Configure the identifier with target languages + English
-    _require_translate_deps()
-    identifier = _get_identifier()
-    if target_langs:
-        identifier.set_languages(list(target_langs) + ['en'])
-    
     target_lang_label = ', '.join(sorted(target_langs)) if target_langs else 'non-English'
-    
+
     # Collect all unique non-null strings across all target columns
     print(f"Collecting unique texts from columns: {columns}...")
     all_texts: set[str] = set()
     for col in columns:
         if col in df.columns:
             all_texts.update(df[col].dropna().unique())
-    
+
     total_unique = len(all_texts)
     print(f"Found {total_unique:,} unique texts to check")
-    
+
+    # No texts means detection needs no optional dependencies at all.
     if total_unique == 0:
-        return df, df.iloc[0:0]
+        return df.iloc[0:0], df
+
+    # Detection needs langid only; translation dependencies are not required.
+    _require_detection_deps()
+
+    # Configure the identifier with target languages + English.
+    identifier = _get_identifier(target_langs)
 
     # Prepare data for detection
     text_list = list(all_texts)
@@ -550,7 +567,7 @@ def translate_series(
     pd.Series
         Series with translated text
     """
-    _require_translate_deps()
+    _require_translation_deps()
     result = series.copy()
 
     # Work only with non-null values
@@ -635,7 +652,7 @@ def translate_dataframe(
     ...     dest="es",    # to Spanish
     ... )
     """
-    _require_translate_deps()
+    _require_translation_deps()
     out = df if inplace else df.copy()
 
     for col in columns:
@@ -728,7 +745,7 @@ def run_translation_pipeline(
     >>> # Load final translated data later
     >>> final_df = pd.read_csv("data/multilingual_translated_translated.csv")
     """
-    _require_translate_deps()
+    _require_detection_deps()
     print("── Step 1: Language Detection ──")
     target_lang_df, other_df = detect_language_rows(
         df, 
@@ -857,7 +874,7 @@ def translate_all_text(
     >>> # Load later
     >>> final_df = pd.read_csv("data/all_translated_translated.csv")
     """
-    _require_translate_deps()
+    _require_translation_deps()
     result = df.copy()
     
     for col in columns:
