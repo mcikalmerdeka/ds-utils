@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Callable, Mapping, Sequence
@@ -22,6 +23,20 @@ from sklearn.model_selection import (
 from tqdm import tqdm
 
 from ._plotting import finalize_figure
+
+logger = logging.getLogger("utils.ml")
+
+
+def _configure_logging(display: bool) -> None:
+    """Route ML diagnostics to INFO when display is on; suppress them otherwise."""
+    if display:
+        logger.setLevel(logging.INFO)
+        if not logger.handlers and not logging.getLogger().handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            logger.addHandler(handler)
+    else:
+        logger.setLevel(logging.WARNING)
 
 
 @dataclass
@@ -427,6 +442,7 @@ def tune_models(
     string is honored exactly. Learning curves are generated whenever
     requested, independently of ``display``.
     """
+    _configure_logging(display)
     scoring = scoring or task.default_scoring
     fitted_models: dict[str, object] = {}
     fit_times: list[float] = []
@@ -504,19 +520,21 @@ def tune_models(
             fitted_models[name] = search
 
             if display:
-                print(f"\n{'='*50}")
-                print(f"Results for {name} ({search_method.upper()} Search)")
-                print(f"{'='*50}")
-                print(f"Fit Time: {fit_time:.2f}s")
-                print(f"Best CV {scoring}: {search.best_score_:.4f}")
-                print("\nBest Parameters:")
+                logger.info("\n%s", "=" * 50)
+                logger.info(
+                    "Results for %s (%s Search)", name, search_method.upper()
+                )
+                logger.info("%s", "=" * 50)
+                logger.info("Fit Time: %.2fs", fit_time)
+                logger.info("Best CV %s: %.4f", scoring, search.best_score_)
+                logger.info("\nBest Parameters:")
                 for param, value in search.best_params_.items():
-                    print(f"  {param}: {value}")
-                print(f"\nTest {scoring}: {search.test_score_:.4f}")
+                    logger.info("  %s: %s", param, value)
+                logger.info("\nTest %s: %.4f", scoring, search.test_score_)
 
             if plot_learning_curves:
                 if display:
-                    print(f"\nGenerating learning curves for {name}...")
+                    logger.info("\nGenerating learning curves for %s...", name)
                 _draw_learning_curves(
                     search.best_estimator_,
                     X_train,
@@ -528,7 +546,7 @@ def tune_models(
                 )
 
         except Exception as e:
-            print(f"Error during {name} pipeline tuning: {str(e)}")
+            logger.exception("Error during %s pipeline tuning: %s", name, e)
             raise
 
     return fitted_models, fit_times

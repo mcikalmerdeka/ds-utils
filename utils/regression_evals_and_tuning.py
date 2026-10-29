@@ -19,7 +19,12 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from ._ml_common import REGRESSION_TASK, tune_models
+from ._ml_common import (
+    REGRESSION_TASK,
+    _configure_logging,
+    logger,
+    tune_models,
+)
 from ._plotting import finalize_figure
 
 # ╔══════════════════════════════════════════════════════════════════════════════════╗
@@ -40,7 +45,8 @@ def eval_regression(
     n_splits=5,
     n_repeats=3,
     random_state=42,
-    show_plots=True
+    show_plots=True,
+    display=True
 ) -> dict:
     """
     Comprehensively evaluate a regression model using multiple metrics 
@@ -86,6 +92,9 @@ def eval_regression(
     show_plots : bool, optional (default=True)
         Whether to call ``plt.show`` after building each figure. Set False to
         keep figures open without blocking (notebooks, tests, batch jobs).
+    display : bool, optional (default=True)
+        Whether to log the metric summary at INFO level. False suppresses the
+        summary without affecting returned metrics or figures.
 
     Example:
     --------
@@ -110,6 +119,7 @@ def eval_regression(
     Exception
         If any error occurs during model evaluation
     """
+    _configure_logging(display)
     try:
         # Utility function to convert input to numpy array
         def to_numpy(arr):
@@ -233,29 +243,45 @@ def eval_regression(
                     'train': metric_func(y_train, y_pred_train)
                 }
 
-        # Print results
-        print(f"Performance Metrics for {model.__class__.__name__}:")
-        print("\nCross-Validated Metrics (mean ± std):")
+        # Log results
+        logger.info("Performance Metrics for %s:", model.__class__.__name__)
+        logger.info("\nCross-Validated Metrics (mean ± std):")
         # Order metrics for display
         display_metrics = ['mae', 'mse', 'rmse', 'mape', 'r2']
         for metric in display_metrics:
-            print(f"\n{metric.upper()}:")
+            logger.info("\n%s:", metric.upper())
             if metric == 'mape':
-                 print(f"  Test:  {metrics['cv'][metric]['test_mean']*100:.2f}% ± {metrics['cv'][metric]['test_std']*100:.2f}%")
-                 print(f"  Train: {metrics['cv'][metric]['train_mean']*100:.2f}% ± {metrics['cv'][metric]['train_std']*100:.2f}%")
+                logger.info(
+                    "  Test:  %.2f%% ± %.2f%%",
+                    metrics['cv'][metric]['test_mean'] * 100,
+                    metrics['cv'][metric]['test_std'] * 100,
+                )
+                logger.info(
+                    "  Train: %.2f%% ± %.2f%%",
+                    metrics['cv'][metric]['train_mean'] * 100,
+                    metrics['cv'][metric]['train_std'] * 100,
+                )
             else:
-                 print(f"  Test:  {metrics['cv'][metric]['test_mean']:.4f} ± {metrics['cv'][metric]['test_std']:.4f}")
-                 print(f"  Train: {metrics['cv'][metric]['train_mean']:.4f} ± {metrics['cv'][metric]['train_std']:.4f}")
+                logger.info(
+                    "  Test:  %.4f ± %.4f",
+                    metrics['cv'][metric]['test_mean'],
+                    metrics['cv'][metric]['test_std'],
+                )
+                logger.info(
+                    "  Train: %.4f ± %.4f",
+                    metrics['cv'][metric]['train_mean'],
+                    metrics['cv'][metric]['train_std'],
+                )
 
-        print("\nSingle Run Metrics:")
+        logger.info("\nSingle Run Metrics:")
         for metric in display_metrics:
-            print(f"\n{metric.upper()}:")
+            logger.info("\n%s:", metric.upper())
             if metric == 'mape':
-                print(f"  Test:  {metrics[metric]['test']*100:.2f}%")
-                print(f"  Train: {metrics[metric]['train']*100:.2f}%")
+                logger.info("  Test:  %.2f%%", metrics[metric]['test'] * 100)
+                logger.info("  Train: %.2f%%", metrics[metric]['train'] * 100)
             else:
-                print(f"  Test:  {metrics[metric]['test']:.4f}")
-                print(f"  Train: {metrics[metric]['train']:.4f}")
+                logger.info("  Test:  %.4f", metrics[metric]['test'])
+                logger.info("  Train: %.4f", metrics[metric]['train'])
 
         # Plot 1: Predicted vs Actual
         if plot_predicted_vs_actual:
@@ -377,7 +403,7 @@ def eval_regression(
         return metrics
 
     except Exception as e:
-        print(f"Error during evaluation: {str(e)}")
+        logger.exception("Error during evaluation: %s", e)
         raise
 
 # Function to compare cross-validated metrics from multiple models

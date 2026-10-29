@@ -25,8 +25,10 @@ import matplotlib.pyplot as plt
 
 from ._ml_common import (
     CLASSIFICATION_TASK,
+    _configure_logging,
     aggregate_fold_metrics,
     collect_fold_results,
+    logger,
     tune_models,
 )
 from ._plotting import finalize_figure
@@ -54,6 +56,7 @@ def eval_classification(
     random_state=42,
     show_plots=True,
     return_figures=False,
+    display=True,
 ) -> dict:
     """
     Comprehensively evaluate a classification model using multiple metrics
@@ -107,6 +110,9 @@ def eval_classification(
     return_figures : bool, optional (default=False)
         Whether to add a ``figures`` entry to the returned dictionary. The
         default result schema is unchanged when this is False.
+    display : bool, optional (default=True)
+        Whether to log the metric summary at INFO level. False suppresses the
+        summary without affecting returned metrics or figures.
 
     Example:
     --------
@@ -132,6 +138,7 @@ def eval_classification(
     Exception
         If any error occurs during model evaluation
     """
+    _configure_logging(display)
     try:
         # Utility function to convert input to numpy array
         def to_numpy(arr):
@@ -244,25 +251,27 @@ def eval_classification(
                     "train": metric_func(y_train, y_pred_train),
                 }
 
-        # Print results
-        print(f"Performance Metrics for {model.__class__.__name__}:")
-        print("\nCross-Validated Metrics (mean ± std):")
+        # Log results
+        logger.info("Performance Metrics for %s:", model.__class__.__name__)
+        logger.info("\nCross-Validated Metrics (mean ± std):")
         for metric in metrics["cv"]:
-            print(f"\n{metric.upper()}:")
-            print(
-                f"  Test:  {metrics['cv'][metric]['test_mean']*100:.2f} ± "
-                f"{metrics['cv'][metric]['test_std']*100:.2f}"
+            logger.info("\n%s:", metric.upper())
+            logger.info(
+                "  Test:  %.2f ± %.2f",
+                metrics["cv"][metric]["test_mean"] * 100,
+                metrics["cv"][metric]["test_std"] * 100,
             )
-            print(
-                f"  Train: {metrics['cv'][metric]['train_mean']*100:.2f} ± "
-                f"{metrics['cv'][metric]['train_std']*100:.2f}"
+            logger.info(
+                "  Train: %.2f ± %.2f",
+                metrics["cv"][metric]["train_mean"] * 100,
+                metrics["cv"][metric]["train_std"] * 100,
             )
 
-        print("\nSingle Run Metrics:")
+        logger.info("\nSingle Run Metrics:")
         for metric in metric_funcs:
-            print(f"\n{metric.upper()}:")
-            print(f"  Test:  {metrics[metric]['test']*100:.2f}")
-            print(f"  Train: {metrics[metric]['train']*100:.2f}")
+            logger.info("\n%s:", metric.upper())
+            logger.info("  Test:  %.2f", metrics[metric]["test"] * 100)
+            logger.info("  Train: %.2f", metrics[metric]["train"] * 100)
 
         figures = {}
 
@@ -357,7 +366,7 @@ def eval_classification(
         return metrics
 
     except Exception as e:
-        print(f"Error during evaluation: {str(e)}")
+        logger.exception("Error during evaluation: %s", e)
         raise
 
 
