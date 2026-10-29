@@ -1,5 +1,6 @@
 import pandas as pd
 from IPython.display import display
+from functools import partial
 from typing import Tuple, List, Optional, Union, Any
 import numpy as np
 from scipy.stats import chi2_contingency
@@ -93,13 +94,19 @@ def calculate_correlation_tabular(df: pd.DataFrame, target_col: str, method: str
             (flat_cm['B'] != target_col)       # Remove target from second column
         ]
 
+        # Normalize each pair to an unordered key so A-B and B-A collapse to
+        # the same row, regardless of correlation strength.
+        pair_keys = [tuple(sorted((a, b))) for a, b in zip(flat_cm['A'], flat_cm['B'])]
+        flat_cm['A'] = [pair[0] for pair in pair_keys]
+        flat_cm['B'] = [pair[1] for pair in pair_keys]
+
         # Add correlation type (Positive/Negative) and convert to absolute values
         flat_cm['Corr Type'] = flat_cm['Corr Value'].apply(lambda x: 'Positive' if x >= 0 else 'Negative')
         flat_cm['Corr Value'] = flat_cm['Corr Value'].abs()
         
-        # Sort by correlation strength and remove duplicates
+        # Sort by correlation strength and remove reversed duplicates
         flat_cm = flat_cm.sort_values(by='Corr Value', ascending=False, ignore_index=True)
-        redundan_cm = flat_cm.drop_duplicates(subset=['Corr Value', 'Corr Type']).reset_index(drop=True)
+        redundan_cm = flat_cm.drop_duplicates(subset=['A', 'B']).reset_index(drop=True)
         
         print("Correlation Between Features:")
         display(redundan_cm.iloc[:15].reset_index(drop=True))
@@ -173,38 +180,52 @@ def analyze_categorical_relationships(df: pd.DataFrame, features: List[str], tar
         # Create contingency table
         contingency = pd.crosstab(df[feature], df[target])
 
-        # Perform chi-square test
-        chi2, p_value, dof, expected = chi2_contingency(contingency)
-
-        # Calculate Cramér's V for effect size
-        n = contingency.sum().sum()
-        min_dim = min(contingency.shape) - 1
-        cramer_v = np.sqrt(chi2 / (n * min_dim))
-
-        # Calculate standardized residuals for post-hoc analysis
-        observed = contingency.values
-        standardized_residuals = (observed - expected) / np.sqrt(expected)
-
-        # Determine significance and effect size interpretation
-        is_significant = p_value < alpha
-
-        # Interpret effect size (common thresholds for Cramér's V)
-        if cramer_v < 0.1:
-            effect_size = 'Negligible'
-        elif cramer_v < 0.3:
-            effect_size = 'Small'
-        elif cramer_v < 0.5:
-            effect_size = 'Medium'
+        # Chi-square and Cramér's V are undefined when either variable has
+        # fewer than two observed categories. Return a row with a NaN effect
+        # size instead of dividing by zero.
+        if contingency.size == 0 or min(contingency.shape) < 2:
+            chi2 = 0.0
+            p_value = 1.0
+            cramer_v = np.nan
+            is_significant = False
+            effect_size = np.nan
+            strongest_category = (
+                contingency.index[0] if len(contingency.index) else np.nan
+            )
+            strongest_association = np.nan
         else:
-            effect_size = 'Large'
+            # Perform chi-square test
+            chi2, p_value, dof, expected = chi2_contingency(contingency)
 
-        # Find categories with strongest associations
-        max_residual_idx = np.unravel_index(
-            np.abs(standardized_residuals).argmax(),
-            standardized_residuals.shape
-        )
-        strongest_category = contingency.index[max_residual_idx[0]]
-        strongest_association = 'Positive' if standardized_residuals[max_residual_idx] > 0 else 'Negative'
+            # Calculate Cramér's V for effect size
+            n = contingency.sum().sum()
+            min_dim = min(contingency.shape) - 1
+            cramer_v = np.sqrt(chi2 / (n * min_dim))
+
+            # Calculate standardized residuals for post-hoc analysis
+            observed = contingency.values
+            standardized_residuals = (observed - expected) / np.sqrt(expected)
+
+            # Determine significance and effect size interpretation
+            is_significant = p_value < alpha
+
+            # Interpret effect size (common thresholds for Cramér's V)
+            if cramer_v < 0.1:
+                effect_size = 'Negligible'
+            elif cramer_v < 0.3:
+                effect_size = 'Small'
+            elif cramer_v < 0.5:
+                effect_size = 'Medium'
+            else:
+                effect_size = 'Large'
+
+            # Find categories with strongest associations
+            max_residual_idx = np.unravel_index(
+                np.abs(standardized_residuals).argmax(),
+                standardized_residuals.shape
+            )
+            strongest_category = contingency.index[max_residual_idx[0]]
+            strongest_association = 'Positive' if standardized_residuals[max_residual_idx] > 0 else 'Negative'
 
         results.append({
             'Feature': feature,
@@ -225,14 +246,16 @@ def analyze_categorical_relationships(df: pd.DataFrame, features: List[str], tar
     print("-" * 80)
     display(results_df)
 
-    # Visualize the results
-    plt.figure(figsize=(10, 6))
-    plt.bar(results_df['Feature'], results_df["Cramér's V"])
-    plt.title("Effect Size (Cramér's V) by Feature")
-    plt.xticks(rotation=45)
-    plt.ylabel("Cramér's V")
-    plt.tight_layout()
-    plt.show()
+    # Visualize the results, skipping features whose effect size is undefined
+    plottable = results_df.dropna(subset=["Cramér's V"])
+    if not plottable.empty:
+        plt.figure(figsize=(10, 6))
+        plt.bar(plottable['Feature'], plottable["Cramér's V"])
+        plt.title("Effect Size (Cramér's V) by Feature")
+        plt.xticks(rotation=45)
+        plt.ylabel("Cramér's V")
+        plt.tight_layout()
+        plt.show()
 
     return results_df
 
@@ -265,17 +288,49 @@ def calculate_vif(df: pd.DataFrame, target_col: str, high_threshold: int = 10, m
     # Create DataFrame of features only
     features_df = df.drop(columns=[target_col])
 
+    if features_df.empty:
+        raise ValueError("VIF requires at least one feature column.")
+
+    # VIF is only defined for numeric features.
+    non_numeric = features_df.select_dtypes(exclude=[np.number]).columns.tolist()
+    if non_numeric:
+        raise ValueError(
+            "VIF requires numeric features; non-numeric columns: "
+            f"{non_numeric}"
+        )
+
+    # NaN rows cannot be used by the underlying regression. Drop them and
+    # report clearly if nothing remains.
+    if features_df.isna().any().any():
+        features_df = features_df.dropna()
+        if features_df.empty:
+            raise ValueError("VIF cannot be calculated: all rows contain NaN values.")
+
+    # A constant feature has an undefined (infinite) VIF. Exclude it from the
+    # matrix used for other features so it does not make every VIF infinite.
+    constant_cols = [
+        col for col in features_df.columns if features_df[col].nunique() <= 1
+    ]
+    variable_cols = [col for col in features_df.columns if col not in constant_cols]
+
+    vif_values = {col: np.inf for col in constant_cols}
+    if len(variable_cols) == 1:
+        # A single predictor has no other feature to be collinear with.
+        vif_values[variable_cols[0]] = 1.0
+    elif variable_cols:
+        matrix = features_df[variable_cols].to_numpy(dtype=float)
+        for i, col in enumerate(variable_cols):
+            try:
+                vif_values[col] = float(variance_inflation_factor(matrix, i))
+            except Exception as exc:
+                raise ValueError(
+                    f"Could not calculate VIF for column '{col}': {exc}"
+                ) from exc
+
     # Initialize VIF DataFrame
     vif_data = pd.DataFrame()
     vif_data['Feature'] = features_df.columns
-
-    # Calculate VIF for each feature
-    try:
-        vif_data['VIF'] = [variance_inflation_factor(features_df.values, i)
-                          for i in range(features_df.shape[1])]
-    except Exception as e:
-        print(f"Error calculating VIF: {e}")
-        return None
+    vif_data['VIF'] = [vif_values[col] for col in features_df.columns]
 
     # Sort by VIF score
     vif_data = vif_data.sort_values('VIF', ascending=False).reset_index(drop=True)
@@ -298,7 +353,7 @@ from sklearn.feature_selection import (
 )
 
 # Calculate feature importance scores using different statistical methods for classification or regression
-def calculate_feature_importance(X: pd.DataFrame, y: pd.Series, task: str = 'classification', method: str = 'mutual_info', k: int = 'all') -> pd.DataFrame:
+def calculate_feature_importance(X: pd.DataFrame, y: pd.Series, task: str = 'classification', method: str = 'mutual_info', k: Union[int, str] = 'all', random_state: int = 42) -> pd.DataFrame:
     """
     Calculate feature importance scores using different statistical methods for classification or regression.
 
@@ -314,6 +369,9 @@ def calculate_feature_importance(X: pd.DataFrame, y: pd.Series, task: str = 'cla
         Method for feature selection ('mutual_info', 'anova', 'chi2' for classification; 'f_regression', 'mutual_info' for regression')
     k : int or 'all', optional, default='all'
         Number of top features to select. Use 'all' to see scores for all features.
+    random_state : int, optional, default=42
+        Random seed used by mutual-information estimators. Ignored by the
+        deterministic ANOVA, chi-square, and F-regression methods.
 
     Examples:
     ---------
@@ -330,10 +388,14 @@ def calculate_feature_importance(X: pd.DataFrame, y: pd.Series, task: str = 'cla
     pd.DataFrame
         DataFrame with feature names, scores, and p-values (if applicable)
     """
+    if k != 'all':
+        if isinstance(k, bool) or not isinstance(k, (int, np.integer)) or k <= 0:
+            raise ValueError("k must be a positive integer or 'all'")
+
     # Select the appropriate scoring function based on task and method
     if task == 'classification':
         if method == 'mutual_info':
-            score_func = mutual_info_classif
+            score_func = partial(mutual_info_classif, random_state=random_state)
         elif method == 'anova':
             score_func = f_classif
         elif method == 'chi2':
@@ -344,7 +406,7 @@ def calculate_feature_importance(X: pd.DataFrame, y: pd.Series, task: str = 'cla
         if method == 'f_regression':
             score_func = f_regression
         elif method == 'mutual_info':
-            score_func = mutual_info_regression
+            score_func = partial(mutual_info_regression, random_state=random_state)
         else:
             raise ValueError("For regression, method must be 'f_regression' or 'mutual_info'")
     else:
@@ -370,5 +432,9 @@ def calculate_feature_importance(X: pd.DataFrame, y: pd.Series, task: str = 'cla
 
     # Sort the DataFrame by scores in descending order
     feature_scores_df = feature_scores_df.sort_values(by='Score', ascending=False)
+
+    # Keep only the top-k features when requested.
+    if k != 'all':
+        feature_scores_df = feature_scores_df.head(k)
 
     return feature_scores_df
