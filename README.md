@@ -124,6 +124,14 @@ uv sync --extra all
 
 `uv sync` is the primary installation workflow, and `pyproject.toml` is the authoritative dependency source. `requirements.txt` is generated from it with `uv export` for pip users; do not edit it manually.
 
+To regenerate it from the repository root:
+
+```bash
+uv export --format requirements-txt --no-hashes --no-dev --output-file requirements.txt
+```
+
+The generated file includes `-e .`, so run the pip commands below from the repository root; `pip install -r requirements.txt` also installs the local package. `uv.lock` records the tested dependency set, while the floors in `pyproject.toml` state the minimum APIs the code relies on.
+
 ```bash
 pip install -r requirements.txt
 
